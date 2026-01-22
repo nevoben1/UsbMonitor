@@ -21,9 +21,18 @@ namespace WindowsFormsApp1
     /// 4. Handle callbacks on the UI thread (use Invoke if needed)
     /// 5. Unregister when done (optional)
     ///
+    /// HOW TO FIND YOUR USB DEVICE VID/PID:
+    /// 1. Plug in your USB device
+    /// 2. Open Device Manager (Windows key + X, then M)
+    /// 3. Find your device in the list
+    /// 4. Right-click -> Properties -> Details tab
+    /// 5. Select "Hardware Ids" from the dropdown
+    /// 6. Look for "USB\VID_XXXX&PID_YYYY" in the value
+    /// 7. Use "VID_XXXX&PID_YYYY" as your registration string
+    ///
     /// MULTIPLE LISTENERS EXAMPLE:
-    /// - Class A registers for VID:046D, PID:C52B (Logitech mouse)
-    /// - Class B registers for VID:0781, PID:5567 (SanDisk flash drive)
+    /// - Class A registers for VID_046D&PID_C52B (Logitech device)
+    /// - Class B registers for VID_0781&PID_5567 (SanDisk flash drive)
     /// - Both share the same UsbDeviceMonitor.Instance
     /// - Each gets callbacks only for their specific device
     /// - No need to coordinate Start() calls - it's automatic!
@@ -41,21 +50,21 @@ namespace WindowsFormsApp1
             // Get the singleton instance
             var monitor = UsbDeviceMonitor.Instance;
 
-            // Example 1: Register for a Logitech device (VID:046D, PID:C52B)
-            // Replace these with your actual device VID/PID
+            // Example 1: Register for a Logitech device (VID_046D&PID_C52B)
+            // Replace "VID_046D&PID_C52B" with your actual device's VID/PID from Device Manager
             // The monitor will auto-start when you call Register()
             registration1 = monitor.Register(
-                "046D_C52B",                    // VID_PID format
-                OnLogitechDeviceConnected,      // Called when connected
-                OnLogitechDeviceDisconnected    // Called when disconnected
+                "VID_046D&PID_C52B",            // Windows device path format (case insensitive)
+                OnLogitechDeviceConnected,      // Called when this specific device connects
+                OnLogitechDeviceDisconnected    // Called when this specific device disconnects
             );
 
-            // Example 2: Register for a different device (VID:0781, PID:5567)
+            // Example 2: Register for a different device (VID_0781&PID_5567)
             // This demonstrates multiple registrations in the same class
             // Since the monitor is already started from registration1, this just adds another listener
             registration2 = monitor.Register(
-                "0781_5567",                    // Different VID_PID
-                OnSandiskDeviceConnected,       // Different callbacks
+                "VID_0781&PID_5567",            // Different device pattern
+                OnSandiskDeviceConnected,       // Different callbacks for this device
                 OnSandiskDeviceDisconnected
             );
 

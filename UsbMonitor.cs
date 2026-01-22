@@ -32,7 +32,7 @@ namespace UsbMonitorLib
     ///
     /// USAGE (SIMPLE!):
     /// var reg = UsbDeviceMonitor.Instance.Register(
-    ///     "046D_C52B",              // VID_PID
+    ///     "VID_046D&PID_C52B",      // VID/PID in Windows device path format
     ///     OnConnected,              // Connect callback
     ///     OnDisconnected            // Disconnect callback
     /// );
@@ -40,6 +40,14 @@ namespace UsbMonitorLib
     ///
     /// // Later, when done (optional):
     /// UsbDeviceMonitor.Instance.Unregister(reg);
+    ///
+    /// HOW TO FIND YOUR DEVICE'S VID/PID:
+    /// 1. Open Device Manager in Windows
+    /// 2. Find your USB device
+    /// 3. Right-click -> Properties -> Details tab
+    /// 4. Select "Hardware Ids" from dropdown
+    /// 5. Look for "USB\VID_XXXX&PID_YYYY" in the value
+    /// 6. Use "VID_XXXX&PID_YYYY" as your filter string
     ///
     /// WHY A SINGLETON?
     /// - Only one message loop/window is needed for all USB monitoring
@@ -110,13 +118,14 @@ namespace UsbMonitorLib
         /// Registers a listener for USB device events with specific VID/PID filter
         ///
         /// USAGE:
-        /// var reg = UsbDeviceMonitor.Instance.Register("046D_C52B", OnConnected, OnDisconnected);
+        /// var reg = UsbDeviceMonitor.Instance.Register("VID_046D&PID_C52B", OnConnected, OnDisconnected);
         ///
         /// The monitor automatically starts on the first registration, so you don't need to call Start()!
         ///
         /// VID/PID FORMAT:
-        /// - "VID_PID" format: "046D_C52B" (underscore separator)
-        /// - VID and PID are 4-digit hexadecimal values
+        /// - Format: "VID_XXXX&PID_YYYY" (e.g., "VID_046D&PID_C52B")
+        /// - Matches the Windows device path format
+        /// - XXXX and YYYY are 4-digit hexadecimal values
         /// - Case insensitive
         ///
         /// CALLBACKS:
@@ -124,7 +133,7 @@ namespace UsbMonitorLib
         /// - onDisconnect: Called when a matching device is disconnected (can be null)
         /// - At least one callback must be provided
         /// </summary>
-        /// <param name="vidPid">VID_PID string (e.g., "046D_C52B")</param>
+        /// <param name="vidPid">VID/PID string (e.g., "VID_046D&PID_C52B")</param>
         /// <param name="onConnect">Callback when device connects (optional)</param>
         /// <param name="onDisconnect">Callback when device disconnects (optional)</param>
         /// <returns>Registration object that can be used to unregister</returns>
@@ -139,19 +148,41 @@ namespace UsbMonitorLib
             if (onConnect == null && onDisconnect == null)
                 throw new ArgumentException("At least one callback (onConnect or onDisconnect) must be provided");
 
-            // Parse VID and PID from the string
-            string[] parts = vidPid.Split('_');
-            if (parts.Length != 2)
-                throw new ArgumentException("VID/PID must be in format 'VID_PID' (e.g., '046D_C52B')", nameof(vidPid));
+            // Validate the format: VID_XXXX&PID_YYYY
+            string upperVidPid = vidPid.ToUpper();
 
-            string vid = parts[0].Trim().ToUpper();
-            string pid = parts[1].Trim().ToUpper();
+            // Check if it contains both VID_ and PID_
+            if (!upperVidPid.Contains("VID_") || !upperVidPid.Contains("PID_"))
+                throw new ArgumentException("VID/PID must be in format 'VID_XXXX&PID_YYYY' (e.g., 'VID_046D&PID_C52B')", nameof(vidPid));
+
+            // Check if it contains the & separator
+            if (!upperVidPid.Contains("&"))
+                throw new ArgumentException("VID/PID must contain '&' separator (e.g., 'VID_046D&PID_C52B')", nameof(vidPid));
+
+            // Extract VID and PID values for logging
+            string vid = "Unknown";
+            string pid = "Unknown";
+            try
+            {
+                int vidIndex = upperVidPid.IndexOf("VID_") + 4;
+                int vidEnd = upperVidPid.IndexOf("&", vidIndex);
+                if (vidEnd > vidIndex)
+                    vid = upperVidPid.Substring(vidIndex, vidEnd - vidIndex);
+
+                int pidIndex = upperVidPid.IndexOf("PID_") + 4;
+                int pidEnd = upperVidPid.IndexOfAny(new[] { '&', '#', '\\' }, pidIndex);
+                if (pidEnd < 0) pidEnd = upperVidPid.Length;
+                pid = upperVidPid.Substring(pidIndex, pidEnd - pidIndex);
+            }
+            catch
+            {
+                // If parsing fails, we'll just use "Unknown" for logging
+            }
 
             // Create the registration
             var registration = new UsbDeviceRegistration
             {
-                VendorId = vid,
-                ProductId = pid,
+                VidPid = vidPid,
                 OnConnect = onConnect,
                 OnDisconnect = onDisconnect
             };
@@ -162,7 +193,7 @@ namespace UsbMonitorLib
                 registrations.Add(registration);
             }
 
-            System.Diagnostics.Debug.WriteLine($"Registered listener for VID:{vid} PID:{pid}");
+            System.Diagnostics.Debug.WriteLine($"Registered listener for VID:{vid} PID:{pid} (Pattern: {vidPid})");
 
             // Auto-start the monitor if this is the first registration
             EnsureStarted();
@@ -184,7 +215,7 @@ namespace UsbMonitorLib
                 registrations.Remove(registration);
             }
 
-            System.Diagnostics.Debug.WriteLine($"Unregistered listener for VID:{registration.VendorId} PID:{registration.ProductId}");
+            System.Diagnostics.Debug.WriteLine($"Unregistered listener for {registration.VidPid}");
         }
 
         /// <summary>
@@ -345,8 +376,7 @@ namespace UsbMonitorLib
         private bool IsMatch(UsbDeviceRegistration registration, UsbDeviceEventArgs e)
         {
             // Compare VID and PID (case insensitive)
-            return string.Equals(registration.VendorId, e.VendorId, StringComparison.OrdinalIgnoreCase) &&
-                   string.Equals(registration.ProductId, e.ProductId, StringComparison.OrdinalIgnoreCase);
+            return e.DevicePath.ToLower().Contains(registration.VidPid.ToLower());
         }
 
         /// <summary>
@@ -699,15 +729,8 @@ namespace UsbMonitorLib
     /// </summary>
     public class UsbDeviceRegistration
     {
-        /// <summary>
-        /// Vendor ID to match (4-digit hex string, uppercase)
-        /// </summary>
-        internal string VendorId { get; set; }
-
-        /// <summary>
-        /// Product ID to match (4-digit hex string, uppercase)
-        /// </summary>
-        internal string ProductId { get; set; }
+        
+        internal string VidPid { get; set; }
 
         /// <summary>
         /// Callback invoked when a matching device is connected
