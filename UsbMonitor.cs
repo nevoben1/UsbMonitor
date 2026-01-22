@@ -6,14 +6,44 @@ using System.Threading;
 namespace UsbMonitorLib
 {
     /// <summary>
-    /// USB Device Monitor - Detects USB device connections and disconnections in real-time
+    /// Callback delegate for USB device connection events
+    /// </summary>
+    /// <param name="e">Event arguments containing device information</param>
+    public delegate void UsbDeviceConnectedCallback(UsbDeviceEventArgs e);
+
+    /// <summary>
+    /// Callback delegate for USB device disconnection events
+    /// </summary>
+    /// <param name="e">Event arguments containing device information</param>
+    public delegate void UsbDeviceDisconnectedCallback(UsbDeviceEventArgs e);
+
+    /// <summary>
+    /// USB Device Monitor - Singleton class that detects USB device connections and disconnections
     ///
     /// HOW IT WORKS:
-    /// 1. Creates a dedicated thread with its own Windows message loop
-    /// 2. Creates an invisible message-only window on that thread to receive Windows messages
-    /// 3. Registers with Windows to receive WM_DEVICECHANGE notifications for USB devices
-    /// 4. When USB devices are plugged/unplugged, Windows sends messages to our window
-    /// 5. The window's WndProc intercepts these messages and fires C# events
+    /// 1. Single instance (singleton) that can be shared across multiple classes
+    /// 2. Auto-starts on first registration (no need to call Start()!)
+    /// 3. Creates a dedicated thread with its own Windows message loop
+    /// 4. Creates an invisible message-only window on that thread to receive Windows messages
+    /// 5. Multiple classes can register with specific VID/PID filters and callbacks
+    /// 6. When USB devices are plugged/unplugged, Windows sends messages to our window
+    /// 7. The window's WndProc intercepts these messages and invokes matching callbacks
+    ///
+    /// USAGE (SIMPLE!):
+    /// var reg = UsbDeviceMonitor.Instance.Register(
+    ///     "046D_C52B",              // VID_PID
+    ///     OnConnected,              // Connect callback
+    ///     OnDisconnected            // Disconnect callback
+    /// );
+    /// // That's it! The monitor auto-starts and you'll get callbacks when your device connects/disconnects
+    ///
+    /// // Later, when done (optional):
+    /// UsbDeviceMonitor.Instance.Unregister(reg);
+    ///
+    /// WHY A SINGLETON?
+    /// - Only one message loop/window is needed for all USB monitoring
+    /// - Multiple classes can share the same monitor instance
+    /// - Reduces resource usage and simplifies lifecycle management
     ///
     /// WHY A SEPARATE THREAD?
     /// - Windows messages require a message pump (Application.Run)
@@ -27,6 +57,10 @@ namespace UsbMonitorLib
     /// </summary>
     public class UsbDeviceMonitor : IDisposable
     {
+        // Singleton instance
+        private static UsbDeviceMonitor _instance;
+        private static readonly object _lock = new object();
+
         // The invisible window that receives USB device change messages from Windows
         private MessageOnlyWindow messageWindow;
 
@@ -36,15 +70,151 @@ namespace UsbMonitorLib
         // Synchronization object to ensure window is created before returning from Start()
         private ManualResetEvent windowCreated = new ManualResetEvent(false);
 
-        // Public events that consumers can subscribe to
-        public event EventHandler<UsbDeviceEventArgs> DeviceConnected;
-        public event EventHandler<UsbDeviceEventArgs> DeviceRemoved;
+        // List of all registered listeners with their VID/PID filters and callbacks
+        private List<UsbDeviceRegistration> registrations = new List<UsbDeviceRegistration>();
+        private readonly object registrationsLock = new object();
+
+        // Track if the monitor has been started
+        private bool isStarted = false;
+
+        /// <summary>
+        /// Gets the singleton instance of the USB Device Monitor
+        /// </summary>
+        public static UsbDeviceMonitor Instance
+        {
+            get
+            {
+                if (_instance == null)
+                {
+                    lock (_lock)
+                    {
+                        if (_instance == null)
+                        {
+                            _instance = new UsbDeviceMonitor();
+                        }
+                    }
+                }
+                return _instance;
+            }
+        }
+
+        /// <summary>
+        /// Private constructor - use Instance property to get the singleton
+        /// </summary>
+        private UsbDeviceMonitor()
+        {
+        }
+
+        /// <summary>
+        /// Registers a listener for USB device events with specific VID/PID filter
+        ///
+        /// USAGE:
+        /// var reg = UsbDeviceMonitor.Instance.Register("046D_C52B", OnConnected, OnDisconnected);
+        ///
+        /// The monitor automatically starts on the first registration, so you don't need to call Start()!
+        ///
+        /// VID/PID FORMAT:
+        /// - "VID_PID" format: "046D_C52B" (underscore separator)
+        /// - VID and PID are 4-digit hexadecimal values
+        /// - Case insensitive
+        ///
+        /// CALLBACKS:
+        /// - onConnect: Called when a matching device is connected (can be null)
+        /// - onDisconnect: Called when a matching device is disconnected (can be null)
+        /// - At least one callback must be provided
+        /// </summary>
+        /// <param name="vidPid">VID_PID string (e.g., "046D_C52B")</param>
+        /// <param name="onConnect">Callback when device connects (optional)</param>
+        /// <param name="onDisconnect">Callback when device disconnects (optional)</param>
+        /// <returns>Registration object that can be used to unregister</returns>
+        public UsbDeviceRegistration Register(
+            string vidPid,
+            UsbDeviceConnectedCallback onConnect,
+            UsbDeviceDisconnectedCallback onDisconnect)
+        {
+            if (string.IsNullOrWhiteSpace(vidPid))
+                throw new ArgumentException("VID/PID cannot be null or empty", nameof(vidPid));
+
+            if (onConnect == null && onDisconnect == null)
+                throw new ArgumentException("At least one callback (onConnect or onDisconnect) must be provided");
+
+            // Parse VID and PID from the string
+            string[] parts = vidPid.Split('_');
+            if (parts.Length != 2)
+                throw new ArgumentException("VID/PID must be in format 'VID_PID' (e.g., '046D_C52B')", nameof(vidPid));
+
+            string vid = parts[0].Trim().ToUpper();
+            string pid = parts[1].Trim().ToUpper();
+
+            // Create the registration
+            var registration = new UsbDeviceRegistration
+            {
+                VendorId = vid,
+                ProductId = pid,
+                OnConnect = onConnect,
+                OnDisconnect = onDisconnect
+            };
+
+            // Add to the list
+            lock (registrationsLock)
+            {
+                registrations.Add(registration);
+            }
+
+            System.Diagnostics.Debug.WriteLine($"Registered listener for VID:{vid} PID:{pid}");
+
+            // Auto-start the monitor if this is the first registration
+            EnsureStarted();
+
+            return registration;
+        }
+
+        /// <summary>
+        /// Unregisters a previously registered listener
+        /// </summary>
+        /// <param name="registration">The registration object returned from Register()</param>
+        public void Unregister(UsbDeviceRegistration registration)
+        {
+            if (registration == null)
+                return;
+
+            lock (registrationsLock)
+            {
+                registrations.Remove(registration);
+            }
+
+            System.Diagnostics.Debug.WriteLine($"Unregistered listener for VID:{registration.VendorId} PID:{registration.ProductId}");
+        }
+
+        /// <summary>
+        /// Ensures the monitor is started
+        /// Called automatically by Register() - you don't need to call this manually
+        /// Thread-safe and idempotent (safe to call multiple times)
+        /// </summary>
+        private void EnsureStarted()
+        {
+            // Double-check locking pattern for thread safety
+            if (!isStarted)
+            {
+                lock (_lock)
+                {
+                    if (!isStarted)
+                    {
+                        Start();
+                        isStarted = true;
+                        System.Diagnostics.Debug.WriteLine("UsbDeviceMonitor auto-started on first registration");
+                    }
+                }
+            }
+        }
 
         /// <summary>
         /// Starts monitoring for USB device changes
         /// Creates a new thread with a message loop to receive Windows notifications
+        ///
+        /// NOTE: This is now private - the monitor auto-starts when you call Register()
         /// </summary>
-        public void Start()
+        private void Start()
         {
             // Prevent starting multiple times
             if (messageLoopThread != null && messageLoopThread.IsAlive)
@@ -95,23 +265,87 @@ namespace UsbMonitorLib
         }
 
         /// <summary>
-        /// Relay method - forwards device connected events from the window to public subscribers
-        /// This bridges the internal window events to the public API
+        /// Called when a USB device is connected
+        /// Iterates through all registrations and invokes callbacks for matching VID/PID
         /// </summary>
         private void OnDeviceConnected(object sender, UsbDeviceEventArgs e)
         {
-            if (DeviceConnected != null)
-                DeviceConnected(this, e);
+            List<UsbDeviceRegistration> currentRegistrations;
+
+            // Get a snapshot of current registrations to avoid lock contention
+            lock (registrationsLock)
+            {
+                currentRegistrations = new List<UsbDeviceRegistration>(registrations);
+            }
+
+            // Check each registration to see if it matches this device
+            foreach (var registration in currentRegistrations)
+            {
+                if (IsMatch(registration, e))
+                {
+                    System.Diagnostics.Debug.WriteLine($"Match found for VID:{e.VendorId} PID:{e.ProductId}");
+
+                    // Invoke the callback if it's registered
+                    if (registration.OnConnect != null)
+                    {
+                        try
+                        {
+                            registration.OnConnect(e);
+                        }
+                        catch (Exception ex)
+                        {
+                            System.Diagnostics.Debug.WriteLine($"Error in OnConnect callback: {ex.Message}");
+                        }
+                    }
+                }
+            }
         }
 
         /// <summary>
-        /// Relay method - forwards device removed events from the window to public subscribers
-        /// This bridges the internal window events to the public API
+        /// Called when a USB device is removed
+        /// Iterates through all registrations and invokes callbacks for matching VID/PID
         /// </summary>
         private void OnDeviceRemoved(object sender, UsbDeviceEventArgs e)
         {
-            if (DeviceRemoved != null)
-                DeviceRemoved(this, e);
+            List<UsbDeviceRegistration> currentRegistrations;
+
+            // Get a snapshot of current registrations to avoid lock contention
+            lock (registrationsLock)
+            {
+                currentRegistrations = new List<UsbDeviceRegistration>(registrations);
+            }
+
+            // Check each registration to see if it matches this device
+            foreach (var registration in currentRegistrations)
+            {
+                if (IsMatch(registration, e))
+                {
+                    System.Diagnostics.Debug.WriteLine($"Match found for VID:{e.VendorId} PID:{e.ProductId}");
+
+                    // Invoke the callback if it's registered
+                    if (registration.OnDisconnect != null)
+                    {
+                        try
+                        {
+                            registration.OnDisconnect(e);
+                        }
+                        catch (Exception ex)
+                        {
+                            System.Diagnostics.Debug.WriteLine($"Error in OnDisconnect callback: {ex.Message}");
+                        }
+                    }
+                }
+            }
+        }
+
+        /// <summary>
+        /// Checks if a registration matches the device event
+        /// </summary>
+        private bool IsMatch(UsbDeviceRegistration registration, UsbDeviceEventArgs e)
+        {
+            // Compare VID and PID (case insensitive)
+            return string.Equals(registration.VendorId, e.VendorId, StringComparison.OrdinalIgnoreCase) &&
+                   string.Equals(registration.ProductId, e.ProductId, StringComparison.OrdinalIgnoreCase);
         }
 
         /// <summary>
@@ -456,6 +690,33 @@ namespace UsbMonitorLib
                 base.Dispose(disposing);
             }
         }
+    }
+
+    /// <summary>
+    /// Represents a registration for USB device monitoring
+    /// Contains the VID/PID filter and callbacks for a specific listener
+    /// </summary>
+    public class UsbDeviceRegistration
+    {
+        /// <summary>
+        /// Vendor ID to match (4-digit hex string, uppercase)
+        /// </summary>
+        internal string VendorId { get; set; }
+
+        /// <summary>
+        /// Product ID to match (4-digit hex string, uppercase)
+        /// </summary>
+        internal string ProductId { get; set; }
+
+        /// <summary>
+        /// Callback invoked when a matching device is connected
+        /// </summary>
+        internal UsbDeviceConnectedCallback OnConnect { get; set; }
+
+        /// <summary>
+        /// Callback invoked when a matching device is disconnected
+        /// </summary>
+        internal UsbDeviceDisconnectedCallback OnDisconnect { get; set; }
     }
 
     /// <summary>

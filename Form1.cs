@@ -12,92 +12,149 @@ using UsbMonitorLib;
 namespace WindowsFormsApp1
 {
     /// <summary>
-    /// Main form demonstrating USB device monitoring
+    /// Main form demonstrating USB device monitoring with the singleton pattern
     ///
-    /// HOW TO USE THE USB MONITOR:
-    /// 1. Create a UsbDeviceMonitor instance
-    /// 2. Subscribe to DeviceConnected and DeviceRemoved events
-    /// 3. Call Start() to begin monitoring
-    /// 4. Handle events on the UI thread (use Invoke if needed)
-    /// 5. Call Stop() and Dispose() when done
+    /// HOW TO USE THE USB MONITOR (SIMPLE!):
+    /// 1. Get the singleton instance: UsbDeviceMonitor.Instance
+    /// 2. Register with your VID/PID and callbacks - that's it!
+    /// 3. The monitor auto-starts on first registration
+    /// 4. Handle callbacks on the UI thread (use Invoke if needed)
+    /// 5. Unregister when done (optional)
+    ///
+    /// MULTIPLE LISTENERS EXAMPLE:
+    /// - Class A registers for VID:046D, PID:C52B (Logitech mouse)
+    /// - Class B registers for VID:0781, PID:5567 (SanDisk flash drive)
+    /// - Both share the same UsbDeviceMonitor.Instance
+    /// - Each gets callbacks only for their specific device
+    /// - No need to coordinate Start() calls - it's automatic!
     /// </summary>
     public partial class Form1 : Form
     {
-        // The USB monitor instance that detects device changes
-        private UsbDeviceMonitor monitor;
+        // Registration objects for each device we're monitoring
+        private UsbDeviceRegistration registration1;
+        private UsbDeviceRegistration registration2;
 
         public Form1()
         {
             InitializeComponent();
 
-            // Step 1: Create the monitor
-            monitor = new UsbDeviceMonitor();
+            // Get the singleton instance
+            var monitor = UsbDeviceMonitor.Instance;
 
-            // Step 2: Subscribe to events
-            // These events fire when USB devices are plugged in or removed
-            monitor.DeviceConnected += new EventHandler<UsbDeviceEventArgs>(monitor_DeviceConnected);
-            monitor.DeviceRemoved += new EventHandler<UsbDeviceEventArgs>(monitor_DeviceRemoved);
+            // Example 1: Register for a Logitech device (VID:046D, PID:C52B)
+            // Replace these with your actual device VID/PID
+            // The monitor will auto-start when you call Register()
+            registration1 = monitor.Register(
+                "046D_C52B",                    // VID_PID format
+                OnLogitechDeviceConnected,      // Called when connected
+                OnLogitechDeviceDisconnected    // Called when disconnected
+            );
 
-            // Step 3: Start monitoring
-            // From this point on, the monitor will notify us of any USB device changes
-            monitor.Start();
+            // Example 2: Register for a different device (VID:0781, PID:5567)
+            // This demonstrates multiple registrations in the same class
+            // Since the monitor is already started from registration1, this just adds another listener
+            registration2 = monitor.Register(
+                "0781_5567",                    // Different VID_PID
+                OnSandiskDeviceConnected,       // Different callbacks
+                OnSandiskDeviceDisconnected
+            );
+
+            // That's it! No need to call Start() - it happens automatically
+            // You'll now get callbacks when these specific devices are connected/disconnected
+
+            System.Diagnostics.Debug.WriteLine("Form1 registered for USB device notifications");
         }
 
         /// <summary>
-        /// Event handler called when a USB device is connected
+        /// Callback for Logitech device connection
         ///
-        /// IMPORTANT: This event is fired from the monitor's background thread,
-        /// not the UI thread! We must use Invoke to safely update the UI.
+        /// IMPORTANT: This is called from the monitor's background thread!
+        /// Use Invoke to safely update the UI.
         /// </summary>
-        private void monitor_DeviceConnected(object sender, UsbDeviceEventArgs e)
+        private void OnLogitechDeviceConnected(UsbDeviceEventArgs e)
         {
-            // Check if we need to marshal this call to the UI thread
-            // InvokeRequired returns true if we're NOT on the UI thread
+            // Marshal to UI thread if needed
             if (this.InvokeRequired)
             {
-                // Marshal the call to the UI thread and return
-                this.Invoke(new EventHandler<UsbDeviceEventArgs>(monitor_DeviceConnected), sender, e);
+                this.Invoke(new UsbDeviceConnectedCallback(OnLogitechDeviceConnected), e);
                 return;
             }
 
-            // Now we're safely on the UI thread - show a message box
-            MessageBox.Show(string.Format("USB CONNECTED : vid {0} , pid {1}", e.VendorId, e.ProductId));
+            // Now on UI thread - safe to show MessageBox
+            MessageBox.Show(string.Format("LOGITECH DEVICE CONNECTED!\nVID: {0}\nPID: {1}\nPath: {2}",
+                e.VendorId, e.ProductId, e.DevicePath));
         }
 
         /// <summary>
-        /// Event handler called when a USB device is removed
-        ///
-        /// IMPORTANT: This event is fired from the monitor's background thread,
-        /// not the UI thread! We must use Invoke to safely update the UI.
+        /// Callback for Logitech device disconnection
         /// </summary>
-        private void monitor_DeviceRemoved(object sender, UsbDeviceEventArgs e)
+        private void OnLogitechDeviceDisconnected(UsbDeviceEventArgs e)
         {
-            // Check if we need to marshal this call to the UI thread
             if (this.InvokeRequired)
             {
-                // Marshal the call to the UI thread and return
-                this.Invoke(new EventHandler<UsbDeviceEventArgs>(monitor_DeviceRemoved), sender, e);
+                this.Invoke(new UsbDeviceDisconnectedCallback(OnLogitechDeviceDisconnected), e);
                 return;
             }
 
-            // Now we're safely on the UI thread - show a message box
-            MessageBox.Show(string.Format("USB DISCONNECTED : vid {0} , pid {1}", e.VendorId, e.ProductId));
+            MessageBox.Show(string.Format("LOGITECH DEVICE DISCONNECTED!\nVID: {0}\nPID: {1}",
+                e.VendorId, e.ProductId));
+        }
+
+        /// <summary>
+        /// Callback for SanDisk device connection
+        /// </summary>
+        private void OnSandiskDeviceConnected(UsbDeviceEventArgs e)
+        {
+            if (this.InvokeRequired)
+            {
+                this.Invoke(new UsbDeviceConnectedCallback(OnSandiskDeviceConnected), e);
+                return;
+            }
+
+            MessageBox.Show(string.Format("SANDISK DEVICE CONNECTED!\nVID: {0}\nPID: {1}\nPath: {2}",
+                e.VendorId, e.ProductId, e.DevicePath));
+        }
+
+        /// <summary>
+        /// Callback for SanDisk device disconnection
+        /// </summary>
+        private void OnSandiskDeviceDisconnected(UsbDeviceEventArgs e)
+        {
+            if (this.InvokeRequired)
+            {
+                this.Invoke(new UsbDeviceDisconnectedCallback(OnSandiskDeviceDisconnected), e);
+                return;
+            }
+
+            MessageBox.Show(string.Format("SANDISK DEVICE DISCONNECTED!\nVID: {0}\nPID: {1}",
+                e.VendorId, e.ProductId));
         }
 
         /// <summary>
         /// Clean up resources when the form is closing
-        /// It's important to stop the monitor to properly clean up the background thread
+        /// Unregister our listeners (optional but good practice)
         /// </summary>
         protected override void OnFormClosing(FormClosingEventArgs e)
         {
-            if (monitor != null)
-            {
-                // Stop the monitoring thread
-                monitor.Stop();
+            var monitor = UsbDeviceMonitor.Instance;
 
-                // Release resources
-                monitor.Dispose();
+            // Unregister our listeners
+            if (registration1 != null)
+            {
+                monitor.Unregister(registration1);
+                registration1 = null;
             }
+
+            if (registration2 != null)
+            {
+                monitor.Unregister(registration2);
+                registration2 = null;
+            }
+
+            // Note: We don't call Stop() or Dispose() on the singleton
+            // Other parts of the application might still be using it
+            // The singleton will clean up when the application exits
+
             base.OnFormClosing(e);
         }
     }
