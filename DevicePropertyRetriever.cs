@@ -48,8 +48,10 @@ namespace UsbMonitorLib
 
             // Run WMI query on a separate MTA thread to avoid COM threading issues
             // WMI requires proper COM apartment threading and can fail when called from STA threads
+            // Using ManualResetEvent for proper synchronization and memory barriers
             Dictionary<string, string> result = null;
             Exception thrownException = null;
+            var completedEvent = new ManualResetEvent(false);
 
             var thread = new Thread(() =>
             {
@@ -61,18 +63,33 @@ namespace UsbMonitorLib
                 {
                     thrownException = ex;
                 }
+                finally
+                {
+                    // Signal that the thread has completed
+                    completedEvent.Set();
+                }
             });
 
             // Set apartment state to MTA (Multi-Threaded Apartment) for COM interop
             thread.SetApartmentState(ApartmentState.MTA);
+
+            System.Diagnostics.Debug.WriteLine($"Starting WMI query thread for VID:{vendorId} PID:{productId}");
+            var startTime = System.Diagnostics.Stopwatch.StartNew();
             thread.Start();
 
             // Wait for the thread to complete (with timeout)
-            if (!thread.Join(5000)) // 5 second timeout
+            // WaitOne provides proper memory barriers to ensure visibility of writes from the worker thread
+            if (!completedEvent.WaitOne(5000)) // 5 second timeout
             {
-                System.Diagnostics.Debug.WriteLine("WMI query timed out after 5 seconds");
+                System.Diagnostics.Debug.WriteLine($"WMI query timed out after {startTime.ElapsedMilliseconds}ms");
+                completedEvent.Dispose();
                 return null;
             }
+
+            startTime.Stop();
+            System.Diagnostics.Debug.WriteLine($"WMI query completed in {startTime.ElapsedMilliseconds}ms");
+
+            completedEvent.Dispose();
 
             if (thrownException != null)
             {
