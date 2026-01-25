@@ -259,7 +259,7 @@ namespace UsbMonitorLib
             params PropertyValidator[] propertyValidators)
         {
             if (string.IsNullOrWhiteSpace(vidPid))
-                throw new ArgumentException("VID/PID cannot be null or empty", nameof(vidPid));
+                throw new ArgumentException("VID/PID cannot be null or empty", "vidPid");
 
             if (onConnect == null && onDisconnect == null)
                 throw new ArgumentException("At least one callback (onConnect or onDisconnect) must be provided");
@@ -269,11 +269,11 @@ namespace UsbMonitorLib
 
             // Check if it contains both VID_ and PID_
             if (!upperVidPid.Contains("VID_") || !upperVidPid.Contains("PID_"))
-                throw new ArgumentException("VID/PID must be in format 'VID_XXXX&PID_YYYY' (e.g., 'VID_046D&PID_C52B')", nameof(vidPid));
+                throw new ArgumentException("VID/PID must be in format 'VID_XXXX&PID_YYYY' (e.g., 'VID_046D&PID_C52B')", "vidPid");
 
             // Check if it contains the & separator
             if (!upperVidPid.Contains("&"))
-                throw new ArgumentException("VID/PID must contain '&' separator (e.g., 'VID_046D&PID_C52B')", nameof(vidPid));
+                throw new ArgumentException("VID/PID must contain '&' separator (e.g., 'VID_046D&PID_C52B')", "vidPid");
 
             // Extract VID and PID values for logging
             string vid = "Unknown";
@@ -312,15 +312,15 @@ namespace UsbMonitorLib
 
             if (propertyValidators != null && propertyValidators.Length > 0)
             {
-                System.Diagnostics.Debug.WriteLine($"Registered listener for VID:{vid} PID:{pid} with {propertyValidators.Length} property validator(s)");
+                System.Diagnostics.Debug.WriteLine(string.Format("Registered listener for VID:{0} PID:{1} with {2} property validator(s)", vid, pid, propertyValidators.Length));
                 foreach (var validator in propertyValidators)
                 {
-                    System.Diagnostics.Debug.WriteLine($"  - {validator}");
+                    System.Diagnostics.Debug.WriteLine(string.Format("  - {0}", validator));
                 }
             }
             else
             {
-                System.Diagnostics.Debug.WriteLine($"Registered listener for VID:{vid} PID:{pid} (Pattern: {vidPid})");
+                System.Diagnostics.Debug.WriteLine(string.Format("Registered listener for VID:{0} PID:{1} (Pattern: {2})", vid, pid, vidPid));
             }
 
             // Auto-start the monitor if this is the first registration
@@ -343,7 +343,7 @@ namespace UsbMonitorLib
                 registrations.Remove(registration);
             }
 
-            System.Diagnostics.Debug.WriteLine($"Unregistered listener for {registration.VidPid}");
+            System.Diagnostics.Debug.WriteLine(string.Format("Unregistered listener for {0}", registration.VidPid));
         }
 
         /// <summary>
@@ -445,18 +445,18 @@ namespace UsbMonitorLib
             Dictionary<string, string> deviceProperties = null;
             if (needsProperties)
             {
-                System.Diagnostics.Debug.WriteLine($"Retrieving device properties via WMI for VID:{e.VendorId} PID:{e.ProductId}");
+                System.Diagnostics.Debug.WriteLine(string.Format("Retrieving device properties via WMI for VID:{0} PID:{1}", e.VendorId, e.ProductId));
                 deviceProperties = DevicePropertyRetriever.GetDeviceProperties(e.DevicePath);
 
                 if (deviceProperties != null)
                 {
-                    System.Diagnostics.Debug.WriteLine($"Successfully retrieved {deviceProperties.Count} properties");
+                    System.Diagnostics.Debug.WriteLine(string.Format("Successfully retrieved {0} properties", deviceProperties.Count));
                     // Populate the event args with properties for the callback
                     e.Properties = deviceProperties;
                 }
                 else
                 {
-                    System.Diagnostics.Debug.WriteLine($"Failed to retrieve device properties for VID:{e.VendorId} PID:{e.ProductId}");
+                    System.Diagnostics.Debug.WriteLine(string.Format("Failed to retrieve device properties for VID:{0} PID:{1}", e.VendorId, e.ProductId));
                 }
             }
 
@@ -465,7 +465,7 @@ namespace UsbMonitorLib
             {
                 if (IsMatch(registration, e, deviceProperties))
                 {
-                    System.Diagnostics.Debug.WriteLine($"Match found for VID:{e.VendorId} PID:{e.ProductId}");
+                    System.Diagnostics.Debug.WriteLine(string.Format("Match found for VID:{0} PID:{1}", e.VendorId, e.ProductId));
 
                     // Invoke the callback if it's registered
                     if (registration.OnConnect != null)
@@ -476,7 +476,7 @@ namespace UsbMonitorLib
                         }
                         catch (Exception ex)
                         {
-                            System.Diagnostics.Debug.WriteLine($"Error in OnConnect callback: {ex.Message}");
+                            System.Diagnostics.Debug.WriteLine(string.Format("Error in OnConnect callback: {0}", ex.Message));
                         }
                     }
                 }
@@ -506,18 +506,18 @@ namespace UsbMonitorLib
             Dictionary<string, string> deviceProperties = null;
             if (needsProperties)
             {
-                System.Diagnostics.Debug.WriteLine($"Retrieving device properties via WMI for VID:{e.VendorId} PID:{e.ProductId}");
+                System.Diagnostics.Debug.WriteLine(string.Format("Retrieving device properties via WMI for VID:{0} PID:{1}", e.VendorId, e.ProductId));
                 deviceProperties = DevicePropertyRetriever.GetDeviceProperties(e.DevicePath);
 
                 if (deviceProperties != null)
                 {
-                    System.Diagnostics.Debug.WriteLine($"Successfully retrieved {deviceProperties.Count} properties");
+                    System.Diagnostics.Debug.WriteLine(string.Format("Successfully retrieved {0} properties", deviceProperties.Count));
                     // Populate the event args with properties for the callback
                     e.Properties = deviceProperties;
                 }
                 else
                 {
-                    System.Diagnostics.Debug.WriteLine($"Failed to retrieve device properties for VID:{e.VendorId} PID:{e.ProductId} (this is common on disconnect)");
+                    System.Diagnostics.Debug.WriteLine(string.Format("Failed to retrieve device properties for VID:{0} PID:{1} (this is common on disconnect)", e.VendorId, e.ProductId));
                 }
             }
 
@@ -526,7 +526,7 @@ namespace UsbMonitorLib
             {
                 if (IsMatch(registration, e, deviceProperties))
                 {
-                    System.Diagnostics.Debug.WriteLine($"Match found for VID:{e.VendorId} PID:{e.ProductId}");
+                    System.Diagnostics.Debug.WriteLine(string.Format("Match found for VID:{0} PID:{1}", e.VendorId, e.ProductId));
 
                     // Invoke the callback if it's registered
                     if (registration.OnDisconnect != null)
@@ -537,7 +537,7 @@ namespace UsbMonitorLib
                         }
                         catch (Exception ex)
                         {
-                            System.Diagnostics.Debug.WriteLine($"Error in OnDisconnect callback: {ex.Message}");
+                            System.Diagnostics.Debug.WriteLine(string.Format("Error in OnDisconnect callback: {0}", ex.Message));
                         }
                     }
                 }
@@ -567,7 +567,7 @@ namespace UsbMonitorLib
                 if (deviceProperties == null)
                 {
                     // STRICT MODE: If properties couldn't be retrieved, fail the match
-                    System.Diagnostics.Debug.WriteLine($"Property validation required but properties could not be retrieved for VID:{e.VendorId} PID:{e.ProductId}");
+                    System.Diagnostics.Debug.WriteLine(string.Format("Property validation required but properties could not be retrieved for VID:{0} PID:{1}", e.VendorId, e.ProductId));
                     return false;
                 }
 
@@ -575,24 +575,25 @@ namespace UsbMonitorLib
                 foreach (var validator in registration.PropertyValidators)
                 {
                     // Check if the property exists in the retrieved properties
-                    if (!deviceProperties.TryGetValue(validator.PropertyName, out string actualValue))
+                    string actualValue;
+                    if (!deviceProperties.TryGetValue(validator.PropertyName, out actualValue))
                     {
                         // STRICT MODE: Property doesn't exist, fail the match
-                        System.Diagnostics.Debug.WriteLine($"Property '{validator.PropertyName}' not found in device properties for VID:{e.VendorId} PID:{e.ProductId}");
+                        System.Diagnostics.Debug.WriteLine(string.Format("Property '{0}' not found in device properties for VID:{1} PID:{2}", validator.PropertyName, e.VendorId, e.ProductId));
                         return false;
                     }
 
                     // Validate the property value
                     if (!validator.Validate(actualValue))
                     {
-                        System.Diagnostics.Debug.WriteLine($"Property validation failed: {validator} (actual value: '{actualValue}')");
+                        System.Diagnostics.Debug.WriteLine(string.Format("Property validation failed: {0} (actual value: '{1}')", validator, actualValue));
                         return false;
                     }
 
-                    System.Diagnostics.Debug.WriteLine($"Property validation passed: {validator} (actual value: '{actualValue}')");
+                    System.Diagnostics.Debug.WriteLine(string.Format("Property validation passed: {0} (actual value: '{1}')", validator, actualValue));
                 }
 
-                System.Diagnostics.Debug.WriteLine($"All {registration.PropertyValidators.Length} property validator(s) passed for VID:{e.VendorId} PID:{e.ProductId}");
+                System.Diagnostics.Debug.WriteLine(string.Format("All {0} property validator(s) passed for VID:{1} PID:{2}", registration.PropertyValidators.Length, e.VendorId, e.ProductId));
             }
 
             return true;

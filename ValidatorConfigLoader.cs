@@ -60,7 +60,7 @@ namespace UsbMonitorLib
                 // Check if file exists
                 if (!File.Exists(absolutePath))
                 {
-                    System.Diagnostics.Debug.WriteLine($"XML configuration file not found: {absolutePath}");
+                    System.Diagnostics.Debug.WriteLine(string.Format("XML configuration file not found: {0}", absolutePath));
                     return null;
                 }
 
@@ -68,21 +68,22 @@ namespace UsbMonitorLib
                 XDocument doc = LoadXmlDocument(absolutePath);
                 if (doc == null)
                 {
-                    System.Diagnostics.Debug.WriteLine($"Failed to load XML document: {absolutePath}");
+                    System.Diagnostics.Debug.WriteLine(string.Format("Failed to load XML document: {0}", absolutePath));
                     return null;
                 }
 
                 // Find the Device element matching the VidPid (case-insensitive)
-                var deviceElement = doc.Root?.Elements("Device")
-                    .FirstOrDefault(d =>
-                        string.Equals(
-                            d.Attribute("VidPid")?.Value,
-                            vidPid,
-                            StringComparison.OrdinalIgnoreCase));
+                var deviceElement = doc.Root != null
+                    ? doc.Root.Elements("Device").FirstOrDefault(d =>
+                    {
+                        var vidPidAttr = d.Attribute("VidPid");
+                        return vidPidAttr != null && string.Equals(vidPidAttr.Value, vidPid, StringComparison.OrdinalIgnoreCase);
+                    })
+                    : null;
 
                 if (deviceElement == null)
                 {
-                    System.Diagnostics.Debug.WriteLine($"No validators found in XML for VidPid: {vidPid}");
+                    System.Diagnostics.Debug.WriteLine(string.Format("No validators found in XML for VidPid: {0}", vidPid));
                     return null;
                 }
 
@@ -92,9 +93,13 @@ namespace UsbMonitorLib
                 {
                     try
                     {
-                        var propertyName = validatorElement.Attribute("PropertyName")?.Value;
-                        var expectedValue = validatorElement.Attribute("ExpectedValue")?.Value;
-                        var methodStr = validatorElement.Attribute("Method")?.Value;
+                        var propertyNameAttr = validatorElement.Attribute("PropertyName");
+                        var expectedValueAttr = validatorElement.Attribute("ExpectedValue");
+                        var methodAttr = validatorElement.Attribute("Method");
+
+                        var propertyName = propertyNameAttr != null ? propertyNameAttr.Value : null;
+                        var expectedValue = expectedValueAttr != null ? expectedValueAttr.Value : null;
+                        var methodStr = methodAttr != null ? methodAttr.Value : null;
 
                         // Validate required attributes
                         if (string.IsNullOrWhiteSpace(propertyName))
@@ -112,7 +117,7 @@ namespace UsbMonitorLib
                         {
                             if (!Enum.TryParse(methodStr, true, out method))
                             {
-                                System.Diagnostics.Debug.WriteLine($"Invalid validation method '{methodStr}', defaulting to Equals");
+                                System.Diagnostics.Debug.WriteLine(string.Format("Invalid validation method '{0}', defaulting to Equals", methodStr));
                                 method = ValidationMethod.Equals;
                             }
                         }
@@ -126,39 +131,39 @@ namespace UsbMonitorLib
                         };
 
                         validators.Add(validator);
-                        System.Diagnostics.Debug.WriteLine($"Loaded validator from XML: {validator}");
+                        System.Diagnostics.Debug.WriteLine(string.Format("Loaded validator from XML: {0}", validator));
                     }
                     catch (Exception ex)
                     {
-                        System.Diagnostics.Debug.WriteLine($"Error parsing PropertyValidator element: {ex.Message}");
+                        System.Diagnostics.Debug.WriteLine(string.Format("Error parsing PropertyValidator element: {0}", ex.Message));
                         // Continue with other validators
                     }
                 }
 
                 if (validators.Count > 0)
                 {
-                    System.Diagnostics.Debug.WriteLine($"Loaded {validators.Count} validator(s) from XML for VidPid: {vidPid}");
+                    System.Diagnostics.Debug.WriteLine(string.Format("Loaded {0} validator(s) from XML for VidPid: {1}", validators.Count, vidPid));
                     return validators.ToArray();
                 }
                 else
                 {
-                    System.Diagnostics.Debug.WriteLine($"No valid validators found in XML for VidPid: {vidPid}");
+                    System.Diagnostics.Debug.WriteLine(string.Format("No valid validators found in XML for VidPid: {0}", vidPid));
                     return null;
                 }
             }
-            catch (XmlException ex)
+            catch (System.Xml.XmlException ex)
             {
-                System.Diagnostics.Debug.WriteLine($"XML parsing error: {ex.Message}");
+                System.Diagnostics.Debug.WriteLine(string.Format("XML parsing error: {0}", ex.Message));
                 return null;
             }
             catch (IOException ex)
             {
-                System.Diagnostics.Debug.WriteLine($"IO error reading XML file: {ex.Message}");
+                System.Diagnostics.Debug.WriteLine(string.Format("IO error reading XML file: {0}", ex.Message));
                 return null;
             }
             catch (Exception ex)
             {
-                System.Diagnostics.Debug.WriteLine($"Unexpected error loading validators from XML: {ex.Message}");
+                System.Diagnostics.Debug.WriteLine(string.Format("Unexpected error loading validators from XML: {0}", ex.Message));
                 return null;
             }
         }
@@ -173,7 +178,8 @@ namespace UsbMonitorLib
             lock (_cacheLock)
             {
                 // Check cache first
-                if (_xmlCache.TryGetValue(filePath, out XDocument cachedDoc))
+                XDocument cachedDoc;
+                if (_xmlCache.TryGetValue(filePath, out cachedDoc))
                 {
                     return cachedDoc;
                 }
@@ -222,7 +228,7 @@ namespace UsbMonitorLib
             {
                 if (_xmlCache.Remove(absolutePath))
                 {
-                    System.Diagnostics.Debug.WriteLine($"Cleared cache for: {absolutePath}");
+                    System.Diagnostics.Debug.WriteLine(string.Format("Cleared cache for: {0}", absolutePath));
                 }
             }
         }
@@ -245,7 +251,7 @@ namespace UsbMonitorLib
 
                 if (!File.Exists(absolutePath))
                 {
-                    System.Diagnostics.Debug.WriteLine($"XML configuration file not found: {absolutePath}");
+                    System.Diagnostics.Debug.WriteLine(string.Format("XML configuration file not found: {0}", absolutePath));
                     return result;
                 }
 
@@ -253,19 +259,26 @@ namespace UsbMonitorLib
                 if (doc == null)
                     return result;
 
-                var vidPids = doc.Root?.Elements("Device")
-                    .Select(d => d.Attribute("VidPid")?.Value)
-                    .Where(v => !string.IsNullOrWhiteSpace(v))
-                    .ToList();
-
-                if (vidPids != null)
+                if (doc.Root != null)
                 {
-                    result.AddRange(vidPids);
+                    var vidPids = doc.Root.Elements("Device")
+                        .Select(d =>
+                        {
+                            var attr = d.Attribute("VidPid");
+                            return attr != null ? attr.Value : null;
+                        })
+                        .Where(v => !string.IsNullOrWhiteSpace(v))
+                        .ToList();
+
+                    if (vidPids != null)
+                    {
+                        result.AddRange(vidPids);
+                    }
                 }
             }
             catch (Exception ex)
             {
-                System.Diagnostics.Debug.WriteLine($"Error reading VidPids from XML: {ex.Message}");
+                System.Diagnostics.Debug.WriteLine(string.Format("Error reading VidPids from XML: {0}", ex.Message));
             }
 
             return result;

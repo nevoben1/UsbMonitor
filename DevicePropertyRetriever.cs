@@ -42,7 +42,7 @@ namespace UsbMonitorLib
 
             if (string.IsNullOrWhiteSpace(vendorId) || string.IsNullOrWhiteSpace(productId))
             {
-                System.Diagnostics.Debug.WriteLine($"GetDeviceProperties: Could not extract VID/PID from device path: {devicePath}");
+                System.Diagnostics.Debug.WriteLine(string.Format("GetDeviceProperties: Could not extract VID/PID from device path: {0}", devicePath));
                 return null;
             }
 
@@ -73,7 +73,7 @@ namespace UsbMonitorLib
             // Set apartment state to MTA (Multi-Threaded Apartment) for COM interop
             thread.SetApartmentState(ApartmentState.MTA);
 
-            System.Diagnostics.Debug.WriteLine($"Starting WMI query thread for VID:{vendorId} PID:{productId}");
+            System.Diagnostics.Debug.WriteLine(string.Format("Starting WMI query thread for VID:{0} PID:{1}", vendorId, productId));
             var startTime = System.Diagnostics.Stopwatch.StartNew();
             thread.Start();
 
@@ -81,19 +81,19 @@ namespace UsbMonitorLib
             // WaitOne provides proper memory barriers to ensure visibility of writes from the worker thread
             if (!completedEvent.WaitOne(5000)) // 5 second timeout
             {
-                System.Diagnostics.Debug.WriteLine($"WMI query timed out after {startTime.ElapsedMilliseconds}ms");
+                System.Diagnostics.Debug.WriteLine(string.Format("WMI query timed out after {0}ms", startTime.ElapsedMilliseconds));
                 completedEvent.Dispose();
                 return null;
             }
 
             startTime.Stop();
-            System.Diagnostics.Debug.WriteLine($"WMI query completed in {startTime.ElapsedMilliseconds}ms");
+            System.Diagnostics.Debug.WriteLine(string.Format("WMI query completed in {0}ms", startTime.ElapsedMilliseconds));
 
             completedEvent.Dispose();
 
             if (thrownException != null)
             {
-                System.Diagnostics.Debug.WriteLine($"Exception in WMI query thread: {thrownException.Message}");
+                System.Diagnostics.Debug.WriteLine(string.Format("Exception in WMI query thread: {0}", thrownException.Message));
                 return null;
             }
 
@@ -148,10 +148,10 @@ namespace UsbMonitorLib
                 // Construct WMI query to find device by VID/PID
                 // Win32_PnPEntity represents all Plug and Play devices
                 // DeviceID typically looks like: USB\VID_046D&PID_C52B\...
-                string vidPidPattern = $"VID_{vendorId.ToUpper()}&PID_{productId.ToUpper()}";
-                string query = $"SELECT * FROM Win32_PnPEntity WHERE DeviceID LIKE '%{vidPidPattern}%'";
+                string vidPidPattern = string.Format("VID_{0}&PID_{1}", vendorId.ToUpper(), productId.ToUpper());
+                string query = string.Format("SELECT * FROM Win32_PnPEntity WHERE DeviceID LIKE '%{0}%'", vidPidPattern);
 
-                System.Diagnostics.Debug.WriteLine($"WMI Query: {query}");
+                System.Diagnostics.Debug.WriteLine(string.Format("WMI Query: {0}", query));
 
                 using (var searcher = new ManagementObjectSearcher(query))
                 {
@@ -159,7 +159,7 @@ namespace UsbMonitorLib
 
                     if (results.Count == 0)
                     {
-                        System.Diagnostics.Debug.WriteLine($"No WMI device found for VID:{vendorId} PID:{productId}");
+                        System.Diagnostics.Debug.WriteLine(string.Format("No WMI device found for VID:{0} PID:{1}", vendorId, productId));
                         return null;
                     }
 
@@ -170,7 +170,7 @@ namespace UsbMonitorLib
 
                     if (device == null)
                     {
-                        System.Diagnostics.Debug.WriteLine($"No device object returned from WMI query");
+                        System.Diagnostics.Debug.WriteLine("No device object returned from WMI query");
                         return null;
                     }
 
@@ -205,12 +205,12 @@ namespace UsbMonitorLib
                     AddProperty(properties, device, "SystemCreationClassName", "SystemCreationClassName");
                     AddProperty(properties, device, "SystemName", "SystemName");
 
-                    System.Diagnostics.Debug.WriteLine($"Retrieved {properties.Count} properties for VID:{vendorId} PID:{productId}");
+                    System.Diagnostics.Debug.WriteLine(string.Format("Retrieved {0} properties for VID:{1} PID:{2}", properties.Count, vendorId, productId));
 
                     // Log all retrieved properties for debugging
                     foreach (var prop in properties)
                     {
-                        System.Diagnostics.Debug.WriteLine($"  {prop.Key} = {prop.Value}");
+                        System.Diagnostics.Debug.WriteLine(string.Format("  {0} = {1}", prop.Key, prop.Value));
                     }
 
                     return properties;
@@ -219,19 +219,19 @@ namespace UsbMonitorLib
             catch (ManagementException ex)
             {
                 // WMI-specific exceptions (query errors, access denied, etc.)
-                System.Diagnostics.Debug.WriteLine($"WMI ManagementException while retrieving properties for VID:{vendorId} PID:{productId}: {ex.Message}");
+                System.Diagnostics.Debug.WriteLine(string.Format("WMI ManagementException while retrieving properties for VID:{0} PID:{1}: {2}", vendorId, productId, ex.Message));
                 return null;
             }
             catch (UnauthorizedAccessException ex)
             {
                 // Access denied (requires admin rights for some WMI queries)
-                System.Diagnostics.Debug.WriteLine($"Access denied while retrieving device properties: {ex.Message}");
+                System.Diagnostics.Debug.WriteLine(string.Format("Access denied while retrieving device properties: {0}", ex.Message));
                 return null;
             }
             catch (Exception ex)
             {
                 // Other exceptions
-                System.Diagnostics.Debug.WriteLine($"Error retrieving device properties for VID:{vendorId} PID:{productId}: {ex.Message}");
+                System.Diagnostics.Debug.WriteLine(string.Format("Error retrieving device properties for VID:{0} PID:{1}: {2}", vendorId, productId, ex.Message));
                 return null;
             }
         }
@@ -273,7 +273,7 @@ namespace UsbMonitorLib
             }
             catch (Exception ex)
             {
-                System.Diagnostics.Debug.WriteLine($"Error reading property {wmiPropertyName}: {ex.Message}");
+                System.Diagnostics.Debug.WriteLine(string.Format("Error reading property {0}: {1}", wmiPropertyName, ex.Message));
             }
         }
     }

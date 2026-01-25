@@ -105,13 +105,13 @@ namespace UsbMonitorLib
                     catch (ArgumentException ex)
                     {
                         // Invalid regex pattern
-                        System.Diagnostics.Debug.WriteLine($"Invalid regex pattern '{ExpectedValue}': {ex.Message}");
+                        System.Diagnostics.Debug.WriteLine(string.Format("Invalid regex pattern '{0}': {1}", ExpectedValue, ex.Message));
                         return false;
                     }
 
                 default:
                     // Unknown validation method
-                    System.Diagnostics.Debug.WriteLine($"Unknown validation method: {Method}");
+                    System.Diagnostics.Debug.WriteLine(string.Format("Unknown validation method: {0}", Method));
                     return false;
             }
         }
@@ -121,7 +121,7 @@ namespace UsbMonitorLib
         /// </summary>
         public override string ToString()
         {
-            return $"{PropertyName} {Method} '{ExpectedValue}'";
+            return string.Format("{0} {1} '{2}'", PropertyName, Method, ExpectedValue);
         }
     }
 }
