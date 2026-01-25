@@ -160,7 +160,7 @@ namespace UsbMonitorLib
                         var validator = new PropertyValidator
                         {
                             PropertyName = propertyName,
-                            ExpectedValues = expectedValuesList.ToArray(),
+                            ExpectedValues = expectedValuesList,
                             Method = method
                         };
 

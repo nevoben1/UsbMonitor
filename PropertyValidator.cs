@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Text.RegularExpressions;
 
 namespace UsbMonitorLib
@@ -12,7 +13,7 @@ namespace UsbMonitorLib
     /// new PropertyValidator
     /// {
     ///     PropertyName = "FriendlyName",
-    ///     ExpectedValues = new[] { "Logitech" },
+    ///     ExpectedValues = new List<string> { "Logitech" },
     ///     Method = ValidationMethod.Contains
     /// }
     ///
@@ -20,7 +21,7 @@ namespace UsbMonitorLib
     /// new PropertyValidator
     /// {
     ///     PropertyName = "Manufacturer",
-    ///     ExpectedValues = new[] { "Logitech", "Logitech Inc.", "Logitech, Inc." },
+    ///     ExpectedValues = new List<string> { "Logitech", "Logitech Inc.", "Logitech, Inc." },
     ///     Method = ValidationMethod.Contains
     /// }
     ///
@@ -28,7 +29,7 @@ namespace UsbMonitorLib
     /// new PropertyValidator
     /// {
     ///     PropertyName = "Manufacturer",
-    ///     ExpectedValues = new[] { "Unknown", "(Unknown)", "(Standard)" },
+    ///     ExpectedValues = new List<string> { "Unknown", "(Unknown)", "(Standard)" },
     ///     Method = ValidationMethod.NotEquals
     /// }
     ///
@@ -36,7 +37,7 @@ namespace UsbMonitorLib
     /// new PropertyValidator
     /// {
     ///     PropertyName = "DeviceID",
-    ///     ExpectedValues = new[] { @"USB\\VID_046D", @"USB\\VID_045E" },
+    ///     ExpectedValues = new List<string> { @"USB\\VID_046D", @"USB\\VID_045E" },
     ///     Method = ValidationMethod.Regex
     /// }
     /// </summary>
@@ -60,15 +61,15 @@ namespace UsbMonitorLib
         /// For Regex method, these should be valid regular expression patterns
         ///
         /// MULTIPLE VALUES:
-        /// You can specify multiple possible values as a string array
-        /// Example: new[] { "Logitech", "Logitech Inc.", "Logitech, Inc." }
+        /// You can specify multiple possible values as a List<string>
+        /// Example: new List<string> { "Logitech", "Logitech Inc.", "Logitech, Inc." }
         ///
         /// For positive validation methods (Equals, Contains, StartsWith, EndsWith, Regex):
         ///   - Returns true if ANY value matches
         /// For negative validation methods (NotEquals, NotContains):
         ///   - Returns true only if NONE of the values match
         /// </summary>
-        public string[] ExpectedValues { get; set; }
+        public List<string> ExpectedValues { get; set; }
 
         /// <summary>
         /// The validation method to use when comparing the actual value to the expected value
@@ -78,7 +79,7 @@ namespace UsbMonitorLib
 
         /// <summary>
         /// Validates an actual property value against this validator's rules
-        /// Supports multiple expected values in the ExpectedValues array
+        /// Supports multiple expected values in the ExpectedValues list
         /// </summary>
         /// <param name="actualValue">The actual property value from the device</param>
         /// <returns>True if validation passes, false otherwise</returns>
@@ -88,10 +89,10 @@ namespace UsbMonitorLib
             if (actualValue == null)
                 actualValue = string.Empty;
 
-            if (ExpectedValues == null || ExpectedValues.Length == 0)
+            if (ExpectedValues == null || ExpectedValues.Count == 0)
                 return false;
 
-            string[] expectedValues = ExpectedValues;
+            List<string> expectedValues = ExpectedValues;
 
             // Perform validation based on method
             switch (Method)
@@ -188,8 +189,8 @@ namespace UsbMonitorLib
         /// </summary>
         public override string ToString()
         {
-            string values = ExpectedValues != null && ExpectedValues.Length > 0
-                ? string.Join(", ", ExpectedValues)
+            string values = ExpectedValues != null && ExpectedValues.Count > 0
+                ? string.Join(", ", ExpectedValues.ToArray())
                 : "(empty)";
             return string.Format("{0} {1} [{2}]", PropertyName, Method, values);
         }
