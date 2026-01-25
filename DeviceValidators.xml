@@ -2,8 +2,9 @@
 <DeviceValidators>
 
   <!-- Logitech Wireless Mouse - Multiple validators with AND logic -->
+  <!-- MULTI-VALUE EXAMPLE: Using '|' separator to specify multiple possible manufacturer names -->
   <Device VidPid="VID_046D&PID_C52B">
-    <PropertyValidator PropertyName="Manufacturer" ExpectedValue="Logitech" Method="Contains" />
+    <PropertyValidator PropertyName="Manufacturer" ExpectedValue="Logitech|Logitech Inc.|Logitech, Inc." Method="Contains" />
     <PropertyValidator PropertyName="Status" ExpectedValue="OK" Method="Equals" />
     <PropertyValidator PropertyName="FriendlyName" ExpectedValue="Mouse" Method="Contains" />
   </Device>
@@ -21,9 +22,10 @@
   </Device>
 
   <!-- Generic USB Device - Using NotEquals to filter out unknowns -->
+  <!-- MULTI-VALUE EXAMPLE: Exclude multiple manufacturer values -->
   <Device VidPid="VID_1234&PID_5678">
-    <PropertyValidator PropertyName="Manufacturer" ExpectedValue="Unknown" Method="NotEquals" />
-    <PropertyValidator PropertyName="Description" ExpectedValue="Generic" Method="NotContains" />
+    <PropertyValidator PropertyName="Manufacturer" ExpectedValue="Unknown|(Unknown)|(Standard)" Method="NotEquals" />
+    <PropertyValidator PropertyName="Description" ExpectedValue="Generic|Standard|Unknown" Method="NotContains" />
   </Device>
 
   <!-- Logitech Keyboard - Using regex pattern -->
@@ -33,9 +35,11 @@
   </Device>
 
   <!-- Microsoft Device - Using EndsWith -->
+  <!-- MULTI-VALUE EXAMPLE: Accept multiple Status values -->
   <Device VidPid="VID_045E&PID_07F8">
     <PropertyValidator PropertyName="DeviceID" ExpectedValue="045E&amp;PID_07F8" Method="EndsWith" />
-    <PropertyValidator PropertyName="Manufacturer" ExpectedValue="Microsoft" Method="Contains" />
+    <PropertyValidator PropertyName="Manufacturer" ExpectedValue="Microsoft|Microsoft Corporation" Method="Contains" />
+    <PropertyValidator PropertyName="Status" ExpectedValue="OK|Degraded" Method="Equals" />
   </Device>
 
   <!-- Case-sensitive validation example -->

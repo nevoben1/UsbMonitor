@@ -24,6 +24,22 @@ namespace UsbMonitorLib
     ///     Method = ValidationMethod.Equals
     /// }
     ///
+    /// // MULTI-VALUE: Accept multiple possible manufacturer names (ANY match wins)
+    /// new PropertyValidator
+    /// {
+    ///     PropertyName = "Manufacturer",
+    ///     ExpectedValue = "Logitech|Logitech Inc.|Logitech, Inc.",
+    ///     Method = ValidationMethod.Contains
+    /// }
+    ///
+    /// // MULTI-VALUE: Exclude multiple values (must NOT match ANY)
+    /// new PropertyValidator
+    /// {
+    ///     PropertyName = "Manufacturer",
+    ///     ExpectedValue = "Unknown|(Unknown)|(Standard)",
+    ///     Method = ValidationMethod.NotEquals
+    /// }
+    ///
     /// // Validate using regex
     /// new PropertyValidator
     /// {
@@ -50,6 +66,15 @@ namespace UsbMonitorLib
         /// <summary>
         /// The expected value to validate against
         /// For Regex method, this should be a valid regular expression pattern
+        ///
+        /// MULTIPLE VALUES:
+        /// You can specify multiple possible values separated by '|' (pipe character)
+        /// Example: "Logitech|Logitech Inc.|Logitech, Inc."
+        ///
+        /// For positive validation methods (Equals, Contains, StartsWith, EndsWith, Regex):
+        ///   - Returns true if ANY value matches
+        /// For negative validation methods (NotEquals, NotContains):
+        ///   - Returns true only if NONE of the values match
         /// </summary>
         public string ExpectedValue { get; set; }
 
@@ -61,6 +86,7 @@ namespace UsbMonitorLib
 
         /// <summary>
         /// Validates an actual property value against this validator's rules
+        /// Supports multiple expected values separated by '|' character
         /// </summary>
         /// <param name="actualValue">The actual property value from the device</param>
         /// <returns>True if validation passes, false otherwise</returns>
@@ -73,41 +99,91 @@ namespace UsbMonitorLib
             if (ExpectedValue == null)
                 ExpectedValue = string.Empty;
 
+            // Split expected value by '|' to support multiple possible values
+            string[] expectedValues = ExpectedValue.Split('|');
+
             // Perform validation based on method
             switch (Method)
             {
                 case ValidationMethod.Equals:
-                    return actualValue.Equals(ExpectedValue, StringComparison.OrdinalIgnoreCase);
+                    // Return true if actual value equals ANY of the expected values (case-insensitive)
+                    foreach (string expected in expectedValues)
+                    {
+                        if (actualValue.Equals(expected, StringComparison.OrdinalIgnoreCase))
+                            return true;
+                    }
+                    return false;
 
                 case ValidationMethod.EqualsCaseSensitive:
-                    return actualValue.Equals(ExpectedValue, StringComparison.Ordinal);
+                    // Return true if actual value equals ANY of the expected values (case-sensitive)
+                    foreach (string expected in expectedValues)
+                    {
+                        if (actualValue.Equals(expected, StringComparison.Ordinal))
+                            return true;
+                    }
+                    return false;
 
                 case ValidationMethod.Contains:
-                    return actualValue.IndexOf(ExpectedValue, StringComparison.OrdinalIgnoreCase) >= 0;
+                    // Return true if actual value contains ANY of the expected values
+                    foreach (string expected in expectedValues)
+                    {
+                        if (actualValue.IndexOf(expected, StringComparison.OrdinalIgnoreCase) >= 0)
+                            return true;
+                    }
+                    return false;
 
                 case ValidationMethod.StartsWith:
-                    return actualValue.StartsWith(ExpectedValue, StringComparison.OrdinalIgnoreCase);
+                    // Return true if actual value starts with ANY of the expected values
+                    foreach (string expected in expectedValues)
+                    {
+                        if (actualValue.StartsWith(expected, StringComparison.OrdinalIgnoreCase))
+                            return true;
+                    }
+                    return false;
 
                 case ValidationMethod.EndsWith:
-                    return actualValue.EndsWith(ExpectedValue, StringComparison.OrdinalIgnoreCase);
+                    // Return true if actual value ends with ANY of the expected values
+                    foreach (string expected in expectedValues)
+                    {
+                        if (actualValue.EndsWith(expected, StringComparison.OrdinalIgnoreCase))
+                            return true;
+                    }
+                    return false;
 
                 case ValidationMethod.NotEquals:
-                    return !actualValue.Equals(ExpectedValue, StringComparison.OrdinalIgnoreCase);
+                    // Return true only if actual value does NOT equal ANY of the expected values
+                    foreach (string expected in expectedValues)
+                    {
+                        if (actualValue.Equals(expected, StringComparison.OrdinalIgnoreCase))
+                            return false; // Found a match, validation fails
+                    }
+                    return true; // No matches found, validation passes
 
                 case ValidationMethod.NotContains:
-                    return actualValue.IndexOf(ExpectedValue, StringComparison.OrdinalIgnoreCase) < 0;
+                    // Return true only if actual value does NOT contain ANY of the expected values
+                    foreach (string expected in expectedValues)
+                    {
+                        if (actualValue.IndexOf(expected, StringComparison.OrdinalIgnoreCase) >= 0)
+                            return false; // Found a match, validation fails
+                    }
+                    return true; // No matches found, validation passes
 
                 case ValidationMethod.Regex:
-                    try
+                    // Return true if actual value matches ANY of the regex patterns
+                    foreach (string pattern in expectedValues)
                     {
-                        return System.Text.RegularExpressions.Regex.IsMatch(actualValue, ExpectedValue);
+                        try
+                        {
+                            if (System.Text.RegularExpressions.Regex.IsMatch(actualValue, pattern))
+                                return true;
+                        }
+                        catch (ArgumentException ex)
+                        {
+                            // Invalid regex pattern, log and continue to next pattern
+                            System.Diagnostics.Debug.WriteLine(string.Format("Invalid regex pattern '{0}': {1}", pattern, ex.Message));
+                        }
                     }
-                    catch (ArgumentException ex)
-                    {
-                        // Invalid regex pattern
-                        System.Diagnostics.Debug.WriteLine(string.Format("Invalid regex pattern '{0}': {1}", ExpectedValue, ex.Message));
-                        return false;
-                    }
+                    return false;
 
                 default:
                     // Unknown validation method
