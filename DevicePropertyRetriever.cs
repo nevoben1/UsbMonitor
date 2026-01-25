@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Management;
+using System.Threading;
 
 namespace UsbMonitorLib
 {
@@ -20,6 +21,10 @@ namespace UsbMonitorLib
     {
         /// <summary>
         /// Retrieves properties for a USB device using WMI
+        ///
+        /// IMPORTANT: WMI uses COM and has threading requirements.
+        /// This method runs the WMI query on a separate MTA thread to avoid COM threading issues
+        /// when called from STA threads (like the Windows message loop).
         /// </summary>
         /// <param name="vendorId">The device Vendor ID (e.g., "046D")</param>
         /// <param name="productId">The device Product ID (e.g., "C52B")</param>
@@ -32,6 +37,49 @@ namespace UsbMonitorLib
                 return null;
             }
 
+            // Run WMI query on a separate MTA thread to avoid COM threading issues
+            // WMI requires proper COM apartment threading and can fail when called from STA threads
+            Dictionary<string, string> result = null;
+            Exception thrownException = null;
+
+            var thread = new Thread(() =>
+            {
+                try
+                {
+                    result = GetDevicePropertiesInternal(vendorId, productId);
+                }
+                catch (Exception ex)
+                {
+                    thrownException = ex;
+                }
+            });
+
+            // Set apartment state to MTA (Multi-Threaded Apartment) for COM interop
+            thread.SetApartmentState(ApartmentState.MTA);
+            thread.Start();
+
+            // Wait for the thread to complete (with timeout)
+            if (!thread.Join(5000)) // 5 second timeout
+            {
+                System.Diagnostics.Debug.WriteLine("WMI query timed out after 5 seconds");
+                return null;
+            }
+
+            if (thrownException != null)
+            {
+                System.Diagnostics.Debug.WriteLine($"Exception in WMI query thread: {thrownException.Message}");
+                return null;
+            }
+
+            return result;
+        }
+
+        /// <summary>
+        /// Internal method that performs the actual WMI query
+        /// Must be called from an MTA thread
+        /// </summary>
+        private static Dictionary<string, string> GetDevicePropertiesInternal(string vendorId, string productId)
+        {
             try
             {
                 // Construct WMI query to find device by VID/PID
