@@ -147,6 +147,60 @@ namespace UsbMonitorLib
         }
 
         /// <summary>
+        /// Registers a listener for USB device events with VID/PID filter and property validators loaded from XML
+        ///
+        /// USAGE:
+        /// var reg = UsbDeviceMonitor.Instance.RegisterFromXml(
+        ///     "VID_046D&PID_C52B",
+        ///     OnConnected,
+        ///     OnDisconnected,
+        ///     "DeviceValidators.xml"  // Optional, defaults to "DeviceValidators.xml"
+        /// );
+        ///
+        /// XML FORMAT:
+        /// <DeviceValidators>
+        ///   <Device VidPid="VID_046D&PID_C52B">
+        ///     <PropertyValidator PropertyName="Manufacturer" ExpectedValue="Logitech" Method="Contains" />
+        ///     <PropertyValidator PropertyName="Status" ExpectedValue="OK" Method="Equals" />
+        ///   </Device>
+        /// </DeviceValidators>
+        ///
+        /// PROPERTY VALIDATION:
+        /// - Validators are automatically loaded from the XML file based on VID/PID
+        /// - If no validators are found in XML, only VID/PID matching is performed
+        /// - All property validators must pass for the callback to be invoked (strict AND logic)
+        /// - If any property cannot be retrieved, validation fails and callback is NOT invoked
+        ///
+        /// VID/PID FORMAT:
+        /// - Format: "VID_XXXX&PID_YYYY" (e.g., "VID_046D&PID_C52B")
+        /// - Matches the Windows device path format
+        /// - XXXX and YYYY are 4-digit hexadecimal values
+        /// - Case insensitive
+        ///
+        /// CALLBACKS:
+        /// - onConnect: Called when a matching device is connected (can be null)
+        /// - onDisconnect: Called when a matching device is disconnected (can be null)
+        /// - At least one callback must be provided
+        /// </summary>
+        /// <param name="vidPid">VID/PID string (e.g., "VID_046D&PID_C52B")</param>
+        /// <param name="onConnect">Callback when device connects (optional)</param>
+        /// <param name="onDisconnect">Callback when device disconnects (optional)</param>
+        /// <param name="xmlFilePath">Path to XML configuration file (default: "DeviceValidators.xml")</param>
+        /// <returns>Registration object that can be used to unregister</returns>
+        public UsbDeviceRegistration RegisterFromXml(
+            string vidPid,
+            UsbDeviceConnectedCallback onConnect,
+            UsbDeviceDisconnectedCallback onDisconnect,
+            string xmlFilePath = "DeviceValidators.xml")
+        {
+            // Load validators from XML
+            PropertyValidator[] validators = ValidatorConfigLoader.LoadValidators(vidPid, xmlFilePath);
+
+            // Register with loaded validators (or null if none found)
+            return Register(vidPid, onConnect, onDisconnect, validators);
+        }
+
+        /// <summary>
         /// Registers a listener for USB device events with VID/PID filter and property validation
         ///
         /// USAGE:

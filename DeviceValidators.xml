@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="utf-8"?>
+<DeviceValidators>
+
+  <!-- Logitech Wireless Mouse - Multiple validators with AND logic -->
+  <Device VidPid="VID_046D&PID_C52B">
+    <PropertyValidator PropertyName="Manufacturer" ExpectedValue="Logitech" Method="Contains" />
+    <PropertyValidator PropertyName="Status" ExpectedValue="OK" Method="Equals" />
+    <PropertyValidator PropertyName="FriendlyName" ExpectedValue="Mouse" Method="Contains" />
+  </Device>
+
+  <!-- SanDisk USB Flash Drive - Single validator -->
+  <Device VidPid="VID_0781&PID_5567">
+    <PropertyValidator PropertyName="FriendlyName" ExpectedValue="USB" Method="Contains" />
+  </Device>
+
+  <!-- HP Printer - Using StartsWith validation -->
+  <Device VidPid="VID_03F0&PID_0853">
+    <PropertyValidator PropertyName="Manufacturer" ExpectedValue="HP" Method="StartsWith" />
+    <PropertyValidator PropertyName="Status" ExpectedValue="OK" Method="Equals" />
+    <PropertyValidator PropertyName="PNPClass" ExpectedValue="Printer" Method="Equals" />
+  </Device>
+
+  <!-- Generic USB Device - Using NotEquals to filter out unknowns -->
+  <Device VidPid="VID_1234&PID_5678">
+    <PropertyValidator PropertyName="Manufacturer" ExpectedValue="Unknown" Method="NotEquals" />
+    <PropertyValidator PropertyName="Description" ExpectedValue="Generic" Method="NotContains" />
+  </Device>
+
+  <!-- Logitech Keyboard - Using regex pattern -->
+  <Device VidPid="VID_046D&PID_C31C">
+    <PropertyValidator PropertyName="FriendlyName" ExpectedValue="Logitech.*Keyboard" Method="Regex" />
+    <PropertyValidator PropertyName="Status" ExpectedValue="OK" Method="Equals" />
+  </Device>
+
+  <!-- Microsoft Device - Using EndsWith -->
+  <Device VidPid="VID_045E&PID_07F8">
+    <PropertyValidator PropertyName="DeviceID" ExpectedValue="045E&amp;PID_07F8" Method="EndsWith" />
+    <PropertyValidator PropertyName="Manufacturer" ExpectedValue="Microsoft" Method="Contains" />
+  </Device>
+
+  <!-- Case-sensitive validation example -->
+  <Device VidPid="VID_8087&PID_0A2B">
+    <PropertyValidator PropertyName="Service" ExpectedValue="BTHUSB" Method="EqualsCaseSensitive" />
+  </Device>
+
+  <!-- Device with no validators (VID/PID only) -->
+  <Device VidPid="VID_0BDA&PID_0129">
+    <!-- No validators - will match on VID/PID only -->
+  </Device>
+
+</DeviceValidators>

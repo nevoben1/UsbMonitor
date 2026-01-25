@@ -43,6 +43,7 @@ namespace WindowsFormsApp1
         private UsbDeviceRegistration registration1;
         private UsbDeviceRegistration registration2;
         private UsbDeviceRegistration registration3;
+        private UsbDeviceRegistration registration4;
 
         public Form1()
         {
@@ -61,7 +62,7 @@ namespace WindowsFormsApp1
                 OnLogitechDeviceDisconnected    // Called when this specific device disconnects
             );
 
-            // Example 2: Registration with property validation
+            // Example 2: Registration with inline property validators
             // This demonstrates property validation - callbacks only fire if ALL validators pass
             // This registration will only trigger for SanDisk devices where the FriendlyName contains "USB"
             registration2 = monitor.Register(
@@ -77,7 +78,7 @@ namespace WindowsFormsApp1
                 }
             );
 
-            // Example 3: Multiple property validators
+            // Example 3: Multiple inline property validators
             // This demonstrates validating multiple properties at once
             // Callbacks will only fire if BOTH validators pass (strict AND logic)
             registration3 = monitor.Register(
@@ -96,6 +97,17 @@ namespace WindowsFormsApp1
                     ExpectedValue = "OK",
                     Method = ValidationMethod.Equals
                 }
+            );
+
+            // Example 4: XML-based registration
+            // This demonstrates loading property validators from an XML configuration file
+            // The validators for VID_046D&PID_C52B are defined in DeviceValidators.xml
+            // If no validators are found in the XML, only VID/PID matching is performed
+            registration4 = monitor.RegisterFromXml(
+                "VID_046D&PID_C52B",            // VID/PID to look up in XML
+                OnXmlBasedDeviceConnected,      // Callback for connect
+                OnXmlBasedDeviceDisconnected,   // Callback for disconnect
+                "DeviceValidators.xml"          // Optional: XML file path (defaults to "DeviceValidators.xml")
             );
 
             // That's it! No need to call Start() - it happens automatically
@@ -238,6 +250,56 @@ namespace WindowsFormsApp1
         }
 
         /// <summary>
+        /// Callback for XML-based device connection
+        /// Validators are loaded from DeviceValidators.xml based on VID/PID
+        /// </summary>
+        private void OnXmlBasedDeviceConnected(UsbDeviceEventArgs e)
+        {
+            if (this.InvokeRequired)
+            {
+                this.Invoke(new UsbDeviceConnectedCallback(OnXmlBasedDeviceConnected), e);
+                return;
+            }
+
+            // Build detailed message
+            string message = string.Format("XML-BASED DEVICE CONNECTED!\nVID: {0}\nPID: {1}",
+                e.VendorId, e.ProductId);
+
+            message += "\n\nThis device matched validators from DeviceValidators.xml";
+
+            // Show properties if available
+            if (e.Properties != null && e.Properties.Count > 0)
+            {
+                message += "\n\nValidated Properties:";
+
+                // Show key properties
+                if (e.Properties.ContainsKey("Manufacturer"))
+                    message += "\nManufacturer: " + e.Properties["Manufacturer"];
+                if (e.Properties.ContainsKey("FriendlyName"))
+                    message += "\nFriendly Name: " + e.Properties["FriendlyName"];
+                if (e.Properties.ContainsKey("Status"))
+                    message += "\nStatus: " + e.Properties["Status"];
+            }
+
+            MessageBox.Show(message);
+        }
+
+        /// <summary>
+        /// Callback for XML-based device disconnection
+        /// </summary>
+        private void OnXmlBasedDeviceDisconnected(UsbDeviceEventArgs e)
+        {
+            if (this.InvokeRequired)
+            {
+                this.Invoke(new UsbDeviceDisconnectedCallback(OnXmlBasedDeviceDisconnected), e);
+                return;
+            }
+
+            MessageBox.Show(string.Format("XML-BASED DEVICE DISCONNECTED!\nVID: {0}\nPID: {1}",
+                e.VendorId, e.ProductId));
+        }
+
+        /// <summary>
         /// Clean up resources when the form is closing
         /// Unregister our listeners (optional but good practice)
         /// </summary>
@@ -262,6 +324,12 @@ namespace WindowsFormsApp1
             {
                 monitor.Unregister(registration3);
                 registration3 = null;
+            }
+
+            if (registration4 != null)
+            {
+                monitor.Unregister(registration4);
+                registration4 = null;
             }
 
             // Note: We don't call Stop() or Dispose() on the singleton
