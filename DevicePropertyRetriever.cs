@@ -104,13 +104,13 @@ namespace UsbMonitorLib
         /// Extracts a value from a USB device path string
         ///
         /// USB device paths look like: \\?\USB#VID_046D&PID_C52B#...
-        /// This method finds "VID_" or "PID_" and extracts the hex value following it
+        /// This method finds "VID_" or "PID_" and extracts the 4-character hex value following it
         ///
         /// Example: ExtractValue("USB#VID_046D&PID_C52B", "VID_") returns "046D"
         /// </summary>
         /// <param name="path">The full USB device path</param>
         /// <param name="prefix">The prefix to search for (e.g., "VID_" or "PID_")</param>
-        /// <returns>The extracted value, or empty string if not found</returns>
+        /// <returns>The extracted 4-character value, or empty string if not found</returns>
         private static string ExtractValue(string path, string prefix)
         {
             try
@@ -122,13 +122,12 @@ namespace UsbMonitorLib
                     // Move past the prefix to the actual value
                     startIndex += prefix.Length;
 
-                    // Find where the value ends (marked by & or #)
-                    int endIndex = path.IndexOf('&', startIndex);
-                    if (endIndex < 0) endIndex = path.IndexOf('#', startIndex);
-                    if (endIndex < 0) endIndex = path.Length;
-
-                    // Extract and return the value
-                    return path.Substring(startIndex, endIndex - startIndex);
+                    // VID and PID are always exactly 4 hexadecimal characters
+                    // Extract exactly 4 characters after the prefix
+                    if (startIndex + 4 <= path.Length)
+                    {
+                        return path.Substring(startIndex, 4);
+                    }
                 }
             }
             catch
