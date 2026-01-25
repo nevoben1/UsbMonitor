@@ -446,7 +446,7 @@ namespace UsbMonitorLib
             if (needsProperties)
             {
                 System.Diagnostics.Debug.WriteLine($"Retrieving device properties via WMI for VID:{e.VendorId} PID:{e.ProductId}");
-                deviceProperties = DevicePropertyRetriever.GetDeviceProperties(e.VendorId, e.ProductId);
+                deviceProperties = DevicePropertyRetriever.GetDeviceProperties(e.DevicePath);
 
                 if (deviceProperties != null)
                 {
@@ -507,7 +507,7 @@ namespace UsbMonitorLib
             if (needsProperties)
             {
                 System.Diagnostics.Debug.WriteLine($"Retrieving device properties via WMI for VID:{e.VendorId} PID:{e.ProductId}");
-                deviceProperties = DevicePropertyRetriever.GetDeviceProperties(e.VendorId, e.ProductId);
+                deviceProperties = DevicePropertyRetriever.GetDeviceProperties(e.DevicePath);
 
                 if (deviceProperties != null)
                 {

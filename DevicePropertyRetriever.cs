@@ -26,14 +26,23 @@ namespace UsbMonitorLib
         /// This method runs the WMI query on a separate MTA thread to avoid COM threading issues
         /// when called from STA threads (like the Windows message loop).
         /// </summary>
-        /// <param name="vendorId">The device Vendor ID (e.g., "046D")</param>
-        /// <param name="productId">The device Product ID (e.g., "C52B")</param>
+        /// <param name="devicePath">The full Windows device path (e.g., "\\?\USB#VID_046D&PID_C52B#...")</param>
         /// <returns>Dictionary of property name to property value, or null if device not found or error occurs</returns>
-        public static Dictionary<string, string> GetDeviceProperties(string vendorId, string productId)
+        public static Dictionary<string, string> GetDeviceProperties(string devicePath)
         {
+            if (string.IsNullOrWhiteSpace(devicePath))
+            {
+                System.Diagnostics.Debug.WriteLine("GetDeviceProperties: DevicePath is null/empty");
+                return null;
+            }
+
+            // Extract VID and PID from device path
+            string vendorId = ExtractValue(devicePath, "VID_");
+            string productId = ExtractValue(devicePath, "PID_");
+
             if (string.IsNullOrWhiteSpace(vendorId) || string.IsNullOrWhiteSpace(productId))
             {
-                System.Diagnostics.Debug.WriteLine("GetDeviceProperties: VendorId or ProductId is null/empty");
+                System.Diagnostics.Debug.WriteLine($"GetDeviceProperties: Could not extract VID/PID from device path: {devicePath}");
                 return null;
             }
 
@@ -72,6 +81,44 @@ namespace UsbMonitorLib
             }
 
             return result;
+        }
+
+        /// <summary>
+        /// Extracts a value from a USB device path string
+        ///
+        /// USB device paths look like: \\?\USB#VID_046D&PID_C52B#...
+        /// This method finds "VID_" or "PID_" and extracts the hex value following it
+        ///
+        /// Example: ExtractValue("USB#VID_046D&PID_C52B", "VID_") returns "046D"
+        /// </summary>
+        /// <param name="path">The full USB device path</param>
+        /// <param name="prefix">The prefix to search for (e.g., "VID_" or "PID_")</param>
+        /// <returns>The extracted value, or empty string if not found</returns>
+        private static string ExtractValue(string path, string prefix)
+        {
+            try
+            {
+                // Find where the prefix starts in the path
+                int startIndex = path.IndexOf(prefix, StringComparison.OrdinalIgnoreCase);
+                if (startIndex >= 0)
+                {
+                    // Move past the prefix to the actual value
+                    startIndex += prefix.Length;
+
+                    // Find where the value ends (marked by & or #)
+                    int endIndex = path.IndexOf('&', startIndex);
+                    if (endIndex < 0) endIndex = path.IndexOf('#', startIndex);
+                    if (endIndex < 0) endIndex = path.Length;
+
+                    // Extract and return the value
+                    return path.Substring(startIndex, endIndex - startIndex);
+                }
+            }
+            catch
+            {
+                // If anything goes wrong, just return empty
+            }
+            return string.Empty;
         }
 
         /// <summary>
