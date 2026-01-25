@@ -251,7 +251,8 @@ namespace UsbMonitorLib
                 if (value != null)
                 {
                     // Handle array properties (like HardwareID)
-                    if (value is string[] arrayValue)
+                    var arrayValue = value as string[];
+                    if (arrayValue != null)
                     {
                         dictionary[friendlyName] = string.Join("; ", arrayValue);
                     }
