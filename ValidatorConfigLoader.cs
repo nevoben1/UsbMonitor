@@ -9,11 +9,23 @@ namespace UsbMonitorLib
     /// <summary>
     /// Loads device property validators from an XML configuration file
     ///
-    /// XML Format:
+    /// XML Format supports two styles:
+    ///
+    /// 1. Single value using attribute (backward compatible):
     /// <DeviceValidators>
     ///   <Device VidPid="VID_046D&PID_C52B">
-    ///     <PropertyValidator PropertyName="Manufacturer" ExpectedValue="Logitech" Method="Contains" />
     ///     <PropertyValidator PropertyName="Status" ExpectedValue="OK" Method="Equals" />
+    ///   </Device>
+    /// </DeviceValidators>
+    ///
+    /// 2. Multiple values using child elements:
+    /// <DeviceValidators>
+    ///   <Device VidPid="VID_046D&PID_C52B">
+    ///     <PropertyValidator PropertyName="Manufacturer" Method="Contains">
+    ///       <ExpectedValue>Logitech</ExpectedValue>
+    ///       <ExpectedValue>Logitech Inc.</ExpectedValue>
+    ///       <ExpectedValue>Logitech, Inc.</ExpectedValue>
+    ///     </PropertyValidator>
     ///   </Device>
     /// </DeviceValidators>
     ///
@@ -98,7 +110,6 @@ namespace UsbMonitorLib
                         var methodAttr = validatorElement.Attribute("Method");
 
                         var propertyName = propertyNameAttr != null ? propertyNameAttr.Value : null;
-                        var expectedValue = expectedValueAttr != null ? expectedValueAttr.Value : null;
                         var methodStr = methodAttr != null ? methodAttr.Value : null;
 
                         // Validate required attributes
@@ -108,8 +119,31 @@ namespace UsbMonitorLib
                             continue;
                         }
 
-                        if (expectedValue == null)
-                            expectedValue = string.Empty;
+                        // Parse expected values (support both attribute and child elements)
+                        var expectedValuesList = new List<string>();
+
+                        // First, check for ExpectedValue attribute (backward compatibility)
+                        if (expectedValueAttr != null && !string.IsNullOrWhiteSpace(expectedValueAttr.Value))
+                        {
+                            expectedValuesList.Add(expectedValueAttr.Value);
+                        }
+
+                        // Then, check for ExpectedValue child elements
+                        var expectedValueElements = validatorElement.Elements("ExpectedValue");
+                        foreach (var valueElement in expectedValueElements)
+                        {
+                            if (!string.IsNullOrWhiteSpace(valueElement.Value))
+                            {
+                                expectedValuesList.Add(valueElement.Value);
+                            }
+                        }
+
+                        // If no values found, skip this validator
+                        if (expectedValuesList.Count == 0)
+                        {
+                            System.Diagnostics.Debug.WriteLine(string.Format("PropertyValidator '{0}' has no ExpectedValue, skipping", propertyName));
+                            continue;
+                        }
 
                         // Parse validation method (default to Equals if not specified or invalid)
                         ValidationMethod method = ValidationMethod.Equals;
@@ -126,7 +160,7 @@ namespace UsbMonitorLib
                         var validator = new PropertyValidator
                         {
                             PropertyName = propertyName,
-                            ExpectedValue = expectedValue,
+                            ExpectedValues = expectedValuesList.ToArray(),
                             Method = method
                         };
 

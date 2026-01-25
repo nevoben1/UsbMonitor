@@ -211,13 +211,13 @@ namespace UsbMonitorLib
         ///     new PropertyValidator
         ///     {
         ///         PropertyName = "FriendlyName",
-        ///         ExpectedValue = "Logitech",
+        ///         ExpectedValues = new[] { "Logitech" },
         ///         Method = ValidationMethod.Contains
         ///     },
         ///     new PropertyValidator
         ///     {
         ///         PropertyName = "Manufacturer",
-        ///         ExpectedValue = "Logitech",
+        ///         ExpectedValues = new[] { "Logitech", "Logitech Inc." },
         ///         Method = ValidationMethod.Equals
         ///     }
         /// );

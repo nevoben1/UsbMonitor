@@ -73,7 +73,7 @@ namespace WindowsFormsApp1
                 new PropertyValidator
                 {
                     PropertyName = "FriendlyName",
-                    ExpectedValue = "USB",
+                    ExpectedValues = new[] { "USB" },
                     Method = ValidationMethod.Contains
                 }
             );
@@ -88,13 +88,13 @@ namespace WindowsFormsApp1
                 new PropertyValidator
                 {
                     PropertyName = "Manufacturer",
-                    ExpectedValue = "Logitech",
+                    ExpectedValues = new[] { "Logitech", "Logitech Inc." },  // Multiple acceptable values
                     Method = ValidationMethod.Contains
                 },
                 new PropertyValidator
                 {
                     PropertyName = "Status",
-                    ExpectedValue = "OK",
+                    ExpectedValues = new[] { "OK" },
                     Method = ValidationMethod.Equals
                 }
             );

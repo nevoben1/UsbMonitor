@@ -8,43 +8,35 @@ namespace UsbMonitorLib
     ///
     /// USAGE EXAMPLES:
     ///
-    /// // Validate that FriendlyName contains "Logitech"
+    /// // Single value validation
     /// new PropertyValidator
     /// {
     ///     PropertyName = "FriendlyName",
-    ///     ExpectedValue = "Logitech",
+    ///     ExpectedValues = new[] { "Logitech" },
     ///     Method = ValidationMethod.Contains
     /// }
     ///
-    /// // Validate that Manufacturer exactly equals "Microsoft"
+    /// // Multiple possible values (ANY match wins)
     /// new PropertyValidator
     /// {
     ///     PropertyName = "Manufacturer",
-    ///     ExpectedValue = "Microsoft",
-    ///     Method = ValidationMethod.Equals
-    /// }
-    ///
-    /// // MULTI-VALUE: Accept multiple possible manufacturer names (ANY match wins)
-    /// new PropertyValidator
-    /// {
-    ///     PropertyName = "Manufacturer",
-    ///     ExpectedValue = "Logitech|Logitech Inc.|Logitech, Inc.",
+    ///     ExpectedValues = new[] { "Logitech", "Logitech Inc.", "Logitech, Inc." },
     ///     Method = ValidationMethod.Contains
     /// }
     ///
-    /// // MULTI-VALUE: Exclude multiple values (must NOT match ANY)
+    /// // Exclude multiple values (must NOT match ANY)
     /// new PropertyValidator
     /// {
     ///     PropertyName = "Manufacturer",
-    ///     ExpectedValue = "Unknown|(Unknown)|(Standard)",
+    ///     ExpectedValues = new[] { "Unknown", "(Unknown)", "(Standard)" },
     ///     Method = ValidationMethod.NotEquals
     /// }
     ///
-    /// // Validate using regex
+    /// // Multiple regex patterns
     /// new PropertyValidator
     /// {
     ///     PropertyName = "DeviceID",
-    ///     ExpectedValue = @"USB\\VID_[0-9A-F]{4}",
+    ///     ExpectedValues = new[] { @"USB\\VID_046D", @"USB\\VID_045E" },
     ///     Method = ValidationMethod.Regex
     /// }
     /// </summary>
@@ -64,19 +56,19 @@ namespace UsbMonitorLib
         public string PropertyName { get; set; }
 
         /// <summary>
-        /// The expected value to validate against
-        /// For Regex method, this should be a valid regular expression pattern
+        /// The expected values to validate against
+        /// For Regex method, these should be valid regular expression patterns
         ///
         /// MULTIPLE VALUES:
-        /// You can specify multiple possible values separated by '|' (pipe character)
-        /// Example: "Logitech|Logitech Inc.|Logitech, Inc."
+        /// You can specify multiple possible values as a string array
+        /// Example: new[] { "Logitech", "Logitech Inc.", "Logitech, Inc." }
         ///
         /// For positive validation methods (Equals, Contains, StartsWith, EndsWith, Regex):
         ///   - Returns true if ANY value matches
         /// For negative validation methods (NotEquals, NotContains):
         ///   - Returns true only if NONE of the values match
         /// </summary>
-        public string ExpectedValue { get; set; }
+        public string[] ExpectedValues { get; set; }
 
         /// <summary>
         /// The validation method to use when comparing the actual value to the expected value
@@ -86,7 +78,7 @@ namespace UsbMonitorLib
 
         /// <summary>
         /// Validates an actual property value against this validator's rules
-        /// Supports multiple expected values separated by '|' character
+        /// Supports multiple expected values in the ExpectedValues array
         /// </summary>
         /// <param name="actualValue">The actual property value from the device</param>
         /// <returns>True if validation passes, false otherwise</returns>
@@ -96,11 +88,10 @@ namespace UsbMonitorLib
             if (actualValue == null)
                 actualValue = string.Empty;
 
-            if (ExpectedValue == null)
-                ExpectedValue = string.Empty;
+            if (ExpectedValues == null || ExpectedValues.Length == 0)
+                return false;
 
-            // Split expected value by '|' to support multiple possible values
-            string[] expectedValues = ExpectedValue.Split('|');
+            string[] expectedValues = ExpectedValues;
 
             // Perform validation based on method
             switch (Method)
@@ -197,7 +188,10 @@ namespace UsbMonitorLib
         /// </summary>
         public override string ToString()
         {
-            return string.Format("{0} {1} '{2}'", PropertyName, Method, ExpectedValue);
+            string values = ExpectedValues != null && ExpectedValues.Length > 0
+                ? string.Join(", ", ExpectedValues)
+                : "(empty)";
+            return string.Format("{0} {1} [{2}]", PropertyName, Method, values);
         }
     }
 }
