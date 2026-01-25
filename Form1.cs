@@ -42,6 +42,7 @@ namespace WindowsFormsApp1
         // Registration objects for each device we're monitoring
         private UsbDeviceRegistration registration1;
         private UsbDeviceRegistration registration2;
+        private UsbDeviceRegistration registration3;
 
         public Form1()
         {
@@ -50,7 +51,8 @@ namespace WindowsFormsApp1
             // Get the singleton instance
             var monitor = UsbDeviceMonitor.Instance;
 
-            // Example 1: Register for a Logitech device (VID_046D&PID_C52B)
+            // Example 1: Basic registration (no property validation - backwards compatible)
+            // Register for a Logitech device (VID_046D&PID_C52B)
             // Replace "VID_046D&PID_C52B" with your actual device's VID/PID from Device Manager
             // The monitor will auto-start when you call Register()
             registration1 = monitor.Register(
@@ -59,13 +61,41 @@ namespace WindowsFormsApp1
                 OnLogitechDeviceDisconnected    // Called when this specific device disconnects
             );
 
-            // Example 2: Register for a different device (VID_0781&PID_5567)
-            // This demonstrates multiple registrations in the same class
-            // Since the monitor is already started from registration1, this just adds another listener
+            // Example 2: Registration with property validation
+            // This demonstrates property validation - callbacks only fire if ALL validators pass
+            // This registration will only trigger for SanDisk devices where the FriendlyName contains "USB"
             registration2 = monitor.Register(
-                "VID_0781&PID_5567",            // Different device pattern
+                "VID_0781&PID_5567",            // SanDisk device pattern
                 OnSandiskDeviceConnected,       // Different callbacks for this device
-                OnSandiskDeviceDisconnected
+                OnSandiskDeviceDisconnected,
+                // Property validators - ALL must pass for callback to be invoked
+                new PropertyValidator
+                {
+                    PropertyName = "FriendlyName",
+                    ExpectedValue = "USB",
+                    Method = ValidationMethod.Contains
+                }
+            );
+
+            // Example 3: Multiple property validators
+            // This demonstrates validating multiple properties at once
+            // Callbacks will only fire if BOTH validators pass (strict AND logic)
+            registration3 = monitor.Register(
+                "VID_046D&PID_C52B",            // Logitech device
+                OnSpecificLogitechConnected,
+                OnSpecificLogitechDisconnected,
+                new PropertyValidator
+                {
+                    PropertyName = "Manufacturer",
+                    ExpectedValue = "Logitech",
+                    Method = ValidationMethod.Contains
+                },
+                new PropertyValidator
+                {
+                    PropertyName = "Status",
+                    ExpectedValue = "OK",
+                    Method = ValidationMethod.Equals
+                }
             );
 
             // That's it! No need to call Start() - it happens automatically
@@ -75,7 +105,7 @@ namespace WindowsFormsApp1
         }
 
         /// <summary>
-        /// Callback for Logitech device connection
+        /// Callback for Logitech device connection (basic registration without property validation)
         ///
         /// IMPORTANT: This is called from the monitor's background thread!
         /// Use Invoke to safely update the UI.
@@ -110,7 +140,8 @@ namespace WindowsFormsApp1
         }
 
         /// <summary>
-        /// Callback for SanDisk device connection
+        /// Callback for SanDisk device connection (with property validation)
+        /// Only called if FriendlyName contains "USB"
         /// </summary>
         private void OnSandiskDeviceConnected(UsbDeviceEventArgs e)
         {
@@ -120,8 +151,23 @@ namespace WindowsFormsApp1
                 return;
             }
 
-            MessageBox.Show(string.Format("SANDISK DEVICE CONNECTED!\nVID: {0}\nPID: {1}\nPath: {2}",
-                e.VendorId, e.ProductId, e.DevicePath));
+            // Build message with properties if available
+            string message = string.Format("SANDISK DEVICE CONNECTED!\nVID: {0}\nPID: {1}\nPath: {2}",
+                e.VendorId, e.ProductId, e.DevicePath);
+
+            // Show some properties if they were retrieved
+            if (e.Properties != null && e.Properties.Count > 0)
+            {
+                message += "\n\nDevice Properties:";
+                if (e.Properties.ContainsKey("FriendlyName"))
+                    message += "\nFriendly Name: " + e.Properties["FriendlyName"];
+                if (e.Properties.ContainsKey("Manufacturer"))
+                    message += "\nManufacturer: " + e.Properties["Manufacturer"];
+                if (e.Properties.ContainsKey("Status"))
+                    message += "\nStatus: " + e.Properties["Status"];
+            }
+
+            MessageBox.Show(message);
         }
 
         /// <summary>
@@ -136,6 +182,58 @@ namespace WindowsFormsApp1
             }
 
             MessageBox.Show(string.Format("SANDISK DEVICE DISCONNECTED!\nVID: {0}\nPID: {1}",
+                e.VendorId, e.ProductId));
+        }
+
+        /// <summary>
+        /// Callback for specific Logitech device connection (with multiple property validators)
+        /// Only called if Manufacturer contains "Logitech" AND Status equals "OK"
+        /// </summary>
+        private void OnSpecificLogitechConnected(UsbDeviceEventArgs e)
+        {
+            if (this.InvokeRequired)
+            {
+                this.Invoke(new UsbDeviceConnectedCallback(OnSpecificLogitechConnected), e);
+                return;
+            }
+
+            // Build detailed message with all properties
+            string message = string.Format("SPECIFIC LOGITECH DEVICE CONNECTED!\nVID: {0}\nPID: {1}",
+                e.VendorId, e.ProductId);
+
+            message += "\n\nThis device passed all property validations:";
+            message += "\n- Manufacturer contains 'Logitech'";
+            message += "\n- Status equals 'OK'";
+
+            // Show all retrieved properties
+            if (e.Properties != null && e.Properties.Count > 0)
+            {
+                message += "\n\nAll Device Properties:";
+                foreach (var prop in e.Properties)
+                {
+                    // Limit property value length for display
+                    string value = prop.Value;
+                    if (value != null && value.Length > 50)
+                        value = value.Substring(0, 50) + "...";
+                    message += string.Format("\n{0}: {1}", prop.Key, value);
+                }
+            }
+
+            MessageBox.Show(message);
+        }
+
+        /// <summary>
+        /// Callback for specific Logitech device disconnection
+        /// </summary>
+        private void OnSpecificLogitechDisconnected(UsbDeviceEventArgs e)
+        {
+            if (this.InvokeRequired)
+            {
+                this.Invoke(new UsbDeviceDisconnectedCallback(OnSpecificLogitechDisconnected), e);
+                return;
+            }
+
+            MessageBox.Show(string.Format("SPECIFIC LOGITECH DEVICE DISCONNECTED!\nVID: {0}\nPID: {1}",
                 e.VendorId, e.ProductId));
         }
 
@@ -158,6 +256,12 @@ namespace WindowsFormsApp1
             {
                 monitor.Unregister(registration2);
                 registration2 = null;
+            }
+
+            if (registration3 != null)
+            {
+                monitor.Unregister(registration3);
+                registration3 = null;
             }
 
             // Note: We don't call Stop() or Dispose() on the singleton
