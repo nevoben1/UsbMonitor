@@ -69,8 +69,8 @@ namespace WindowsFormsApp1
         {
             // This callback is ONLY invoked when VID_1234&PID_5678 is connected
             // Other devices won't trigger this callback
-            Console.WriteLine($"ExampleUsbListener: My device connected! VID:{e.VendorId} PID:{e.ProductId}");
-            Console.WriteLine($"Device path: {e.DevicePath}");
+            Console.WriteLine(String.Format("ExampleUsbListener: My device connected! VID:{0} PID:{1}", e.VendorId, e.ProductId));
+            Console.WriteLine(String.Format("Device path: {0}", e.DevicePath));
 
             // Add your device-specific logic here
             // For example:
@@ -86,7 +86,7 @@ namespace WindowsFormsApp1
         private void OnMyDeviceDisconnected(UsbDeviceEventArgs e)
         {
             // This callback is ONLY invoked when VID_1234&PID_5678 is disconnected
-            Console.WriteLine($"ExampleUsbListener: My device disconnected! VID:{e.VendorId} PID:{e.ProductId}");
+            Console.WriteLine(String.Format("ExampleUsbListener: My device disconnected! VID:{0} PID:{1}", e.VendorId, e.ProductId));
 
             // Add your cleanup logic here
             // For example:
@@ -113,8 +113,8 @@ namespace WindowsFormsApp1
             // If called after another class already registered, it just adds to the existing monitor
             myRegistration = UsbDeviceMonitor.Instance.Register(
                 "VID_ABCD&PID_EF01",
-                (e) => Console.WriteLine($"AnotherUsbListener: Device VID_ABCD&PID_EF01 connected! Path: {e.DevicePath}"),
-                (e) => Console.WriteLine($"AnotherUsbListener: Device VID_ABCD&PID_EF01 disconnected!")
+                (e) => Console.WriteLine(String.Format("AnotherUsbListener: Device VID_ABCD&PID_EF01 connected! Path: {0}", e.DevicePath)),
+                (e) => Console.WriteLine(String.Format("AnotherUsbListener: Device VID_ABCD&PID_EF01 disconnected!"))
             );
 
             // No need to call Start() - it's automatic!
