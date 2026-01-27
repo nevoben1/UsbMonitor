@@ -20,6 +20,38 @@ namespace UsbMonitorLib
     public static class DevicePropertyRetriever
     {
         /// <summary>
+        /// Maps friendly property names (used in PropertyValidator) to their WMI property names.
+        /// Most map 1:1 except "FriendlyName" which is an alias for the WMI "Name" property.
+        /// </summary>
+        private static readonly Dictionary<string, string> FriendlyNameToWmiProperty = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+        {
+            { "Name", "Name" },
+            { "FriendlyName", "Name" },
+            { "Description", "Description" },
+            { "Manufacturer", "Manufacturer" },
+            { "DeviceID", "DeviceID" },
+            { "PNPDeviceID", "PNPDeviceID" },
+            { "Status", "Status" },
+            { "Service", "Service" },
+            { "Caption", "Caption" },
+            { "ClassGuid", "ClassGuid" },
+            { "ConfigManagerErrorCode", "ConfigManagerErrorCode" },
+            { "ConfigManagerUserConfig", "ConfigManagerUserConfig" },
+            { "CreationClassName", "CreationClassName" },
+            { "ErrorCleared", "ErrorCleared" },
+            { "ErrorDescription", "ErrorDescription" },
+            { "HardwareID", "HardwareID" },
+            { "InstallDate", "InstallDate" },
+            { "LastErrorCode", "LastErrorCode" },
+            { "PNPClass", "PNPClass" },
+            { "PowerManagementCapabilities", "PowerManagementCapabilities" },
+            { "PowerManagementSupported", "PowerManagementSupported" },
+            { "StatusInfo", "StatusInfo" },
+            { "SystemCreationClassName", "SystemCreationClassName" },
+            { "SystemName", "SystemName" }
+        };
+
+        /// <summary>
         /// Retrieves properties for a USB device using WMI
         ///
         /// IMPORTANT: WMI uses COM and has threading requirements.
@@ -166,27 +198,36 @@ namespace UsbMonitorLib
 
                     System.Diagnostics.Debug.WriteLine(string.Format("Found {0} WMI result(s) for VID:{1} PID:{2}", results.Count, vendorId, productId));
 
+                    bool hasValidators = propertyValidators != null && propertyValidators.Length > 0;
+
                     // Iterate all matching WMI results and return the one that matches all property validators.
                     // A single VID/PID can produce multiple PnP entities (e.g. composite USB devices),
                     // each with different property values. We need to find the right one.
                     foreach (var device in results.Cast<ManagementObject>())
                     {
-                        // Extract properties into a dictionary with friendly names
-                        var properties = ExtractProperties(device);
-
-                        System.Diagnostics.Debug.WriteLine(string.Format("Evaluating WMI result: DeviceID={0}", properties.ContainsKey("DeviceID") ? properties["DeviceID"] : "(unknown)"));
-
-                        // Log all retrieved properties for debugging
-                        foreach (var prop in properties)
+                        // If no validators are provided, extract all properties (backwards compatible)
+                        if (!hasValidators)
                         {
-                            System.Diagnostics.Debug.WriteLine(string.Format("  {0} = {1}", prop.Key, prop.Value));
+                            var properties = ExtractAllProperties(device);
+
+                            System.Diagnostics.Debug.WriteLine(string.Format("No property validators specified, returning first result for VID:{0} PID:{1}", vendorId, productId));
+
+                            foreach (var prop in properties)
+                            {
+                                System.Diagnostics.Debug.WriteLine(string.Format("  {0} = {1}", prop.Key, prop.Value));
+                            }
+
+                            return properties;
                         }
 
-                        // If no validators are provided, return the first result (backwards compatible)
-                        if (propertyValidators == null || propertyValidators.Length == 0)
+                        // When validators are provided, only extract the properties they reference
+                        var validatorProperties = ExtractValidatorProperties(device, propertyValidators);
+
+                        System.Diagnostics.Debug.WriteLine(string.Format("Evaluating WMI result with {0} requested property(ies)", validatorProperties.Count));
+
+                        foreach (var prop in validatorProperties)
                         {
-                            System.Diagnostics.Debug.WriteLine(string.Format("No property validators specified, returning first result for VID:{0} PID:{1}", vendorId, productId));
-                            return properties;
+                            System.Diagnostics.Debug.WriteLine(string.Format("  {0} = {1}", prop.Key, prop.Value));
                         }
 
                         // Check if ALL validators pass for this device
@@ -194,7 +235,7 @@ namespace UsbMonitorLib
                         foreach (var validator in propertyValidators)
                         {
                             string actualValue;
-                            if (!properties.TryGetValue(validator.PropertyName, out actualValue))
+                            if (!validatorProperties.TryGetValue(validator.PropertyName, out actualValue))
                             {
                                 System.Diagnostics.Debug.WriteLine(string.Format("  Property '{0}' not found, skipping this result", validator.PropertyName));
                                 allValidatorsPass = false;
@@ -214,7 +255,7 @@ namespace UsbMonitorLib
                         if (allValidatorsPass)
                         {
                             System.Diagnostics.Debug.WriteLine(string.Format("All {0} validator(s) passed for this WMI result", propertyValidators.Length));
-                            return properties;
+                            return validatorProperties;
                         }
                     }
 
@@ -244,39 +285,47 @@ namespace UsbMonitorLib
         }
 
         /// <summary>
-        /// Extracts all known properties from a WMI ManagementObject into a dictionary
+        /// Extracts all known properties from a WMI ManagementObject into a dictionary.
+        /// Used when no validators are provided (backwards compatible path).
         /// </summary>
-        private static Dictionary<string, string> ExtractProperties(ManagementObject device)
+        private static Dictionary<string, string> ExtractAllProperties(ManagementObject device)
         {
             var properties = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
 
-            // Map WMI property names to friendly names
-            // The key is the friendly name (what users will use in PropertyValidator)
-            // The value is retrieved from the WMI property
-            AddProperty(properties, device, "Name", "Name");
-            AddProperty(properties, device, "FriendlyName", "Name"); // Alias for Name
-            AddProperty(properties, device, "Description", "Description");
-            AddProperty(properties, device, "Manufacturer", "Manufacturer");
-            AddProperty(properties, device, "DeviceID", "DeviceID");
-            AddProperty(properties, device, "PNPDeviceID", "PNPDeviceID");
-            AddProperty(properties, device, "Status", "Status");
-            AddProperty(properties, device, "Service", "Service");
-            AddProperty(properties, device, "Caption", "Caption");
-            AddProperty(properties, device, "ClassGuid", "ClassGuid");
-            AddProperty(properties, device, "ConfigManagerErrorCode", "ConfigManagerErrorCode");
-            AddProperty(properties, device, "ConfigManagerUserConfig", "ConfigManagerUserConfig");
-            AddProperty(properties, device, "CreationClassName", "CreationClassName");
-            AddProperty(properties, device, "ErrorCleared", "ErrorCleared");
-            AddProperty(properties, device, "ErrorDescription", "ErrorDescription");
-            AddProperty(properties, device, "HardwareID", "HardwareID");
-            AddProperty(properties, device, "InstallDate", "InstallDate");
-            AddProperty(properties, device, "LastErrorCode", "LastErrorCode");
-            AddProperty(properties, device, "PNPClass", "PNPClass");
-            AddProperty(properties, device, "PowerManagementCapabilities", "PowerManagementCapabilities");
-            AddProperty(properties, device, "PowerManagementSupported", "PowerManagementSupported");
-            AddProperty(properties, device, "StatusInfo", "StatusInfo");
-            AddProperty(properties, device, "SystemCreationClassName", "SystemCreationClassName");
-            AddProperty(properties, device, "SystemName", "SystemName");
+            foreach (var entry in FriendlyNameToWmiProperty)
+            {
+                AddProperty(properties, device, entry.Key, entry.Value);
+            }
+
+            return properties;
+        }
+
+        /// <summary>
+        /// Extracts only the properties referenced by the given validators from a WMI ManagementObject.
+        /// This avoids retrieving all 24 properties when only a few are needed for validation.
+        /// </summary>
+        private static Dictionary<string, string> ExtractValidatorProperties(ManagementObject device, PropertyValidator[] propertyValidators)
+        {
+            var properties = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+
+            foreach (var validator in propertyValidators)
+            {
+                // Skip if we already extracted this property (e.g. duplicate PropertyName across validators)
+                if (properties.ContainsKey(validator.PropertyName))
+                    continue;
+
+                string wmiPropertyName;
+                if (FriendlyNameToWmiProperty.TryGetValue(validator.PropertyName, out wmiPropertyName))
+                {
+                    AddProperty(properties, device, validator.PropertyName, wmiPropertyName);
+                }
+                else
+                {
+                    // Unknown friendly name - try using it directly as a WMI property name
+                    System.Diagnostics.Debug.WriteLine(string.Format("Unknown friendly name '{0}', trying as WMI property name", validator.PropertyName));
+                    AddProperty(properties, device, validator.PropertyName, validator.PropertyName);
+                }
+            }
 
             return properties;
         }
