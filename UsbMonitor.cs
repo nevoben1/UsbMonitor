@@ -439,8 +439,7 @@ namespace UsbMonitorLib
             }
 
             // Cache for property lookups to avoid redundant WMI queries.
-            // Key: comma-joined validator descriptions (or empty string for no validators).
-            // Different registrations with the same set of validators can share a single WMI result.
+            // Key: validator descriptions joined by pipe. Only populated when validators are present.
             var propertiesCache = new Dictionary<string, Dictionary<string, string>>();
 
             // Check each registration to see if it matches this device
@@ -452,43 +451,33 @@ namespace UsbMonitorLib
                     continue;
                 }
 
-                // Retrieve device properties via WMI, filtered by this registration's validators
                 bool hasValidators = registration.PropertyValidators != null && registration.PropertyValidators.Length > 0;
-                string cacheKey = hasValidators
-                    ? string.Join("|", registration.PropertyValidators.Select(v => v.ToString()).ToArray())
-                    : string.Empty;
 
-                Dictionary<string, string> deviceProperties;
-                if (!propertiesCache.TryGetValue(cacheKey, out deviceProperties))
+                if (hasValidators)
                 {
-                    if (hasValidators)
+                    // Retrieve device properties via WMI, filtered by this registration's validators
+                    string cacheKey = string.Join("|", registration.PropertyValidators.Select(v => v.ToString()).ToArray());
+
+                    Dictionary<string, string> deviceProperties;
+                    if (!propertiesCache.TryGetValue(cacheKey, out deviceProperties))
                     {
                         System.Diagnostics.Debug.WriteLine(string.Format("Retrieving device properties via WMI for VID:{0} PID:{1} with {2} validator(s)", e.VendorId, e.ProductId, registration.PropertyValidators.Length));
                         deviceProperties = DevicePropertyRetriever.GetDeviceProperties(e.DevicePath, registration.PropertyValidators);
+                        propertiesCache[cacheKey] = deviceProperties;
                     }
-                    else
+
+                    if (deviceProperties == null)
                     {
-                        // No validators - retrieve without filtering (backwards compatible)
-                        deviceProperties = DevicePropertyRetriever.GetDeviceProperties(e.DevicePath);
+                        System.Diagnostics.Debug.WriteLine(string.Format("No matching device found for VID:{0} PID:{1} with specified validators", e.VendorId, e.ProductId));
+                        continue;
                     }
-                    propertiesCache[cacheKey] = deviceProperties;
-                }
 
-                if (hasValidators && deviceProperties == null)
-                {
-                    System.Diagnostics.Debug.WriteLine(string.Format("No matching device found for VID:{0} PID:{1} with specified validators", e.VendorId, e.ProductId));
-                    continue;
-                }
-
-                // Properties were already validated during retrieval, so this is a match
-                System.Diagnostics.Debug.WriteLine(string.Format("Match found for VID:{0} PID:{1}", e.VendorId, e.ProductId));
-
-                if (deviceProperties != null)
-                {
                     e.Properties = deviceProperties;
                 }
 
-                // Invoke the callback if it's registered
+                // VID/PID matched (and validators passed if any were specified)
+                System.Diagnostics.Debug.WriteLine(string.Format("Match found for VID:{0} PID:{1}", e.VendorId, e.ProductId));
+
                 if (registration.OnConnect != null)
                 {
                     try
@@ -529,43 +518,35 @@ namespace UsbMonitorLib
                     continue;
                 }
 
-                // Retrieve device properties via WMI, filtered by this registration's validators
-                // Note: On device removal, WMI might not be able to retrieve properties as the device is being removed
-                // This is a known limitation - property validation is more reliable on connect than disconnect
                 bool hasValidators = registration.PropertyValidators != null && registration.PropertyValidators.Length > 0;
-                string cacheKey = hasValidators
-                    ? string.Join("|", registration.PropertyValidators.Select(v => v.ToString()).ToArray())
-                    : string.Empty;
 
-                Dictionary<string, string> deviceProperties;
-                if (!propertiesCache.TryGetValue(cacheKey, out deviceProperties))
+                if (hasValidators)
                 {
-                    if (hasValidators)
+                    // Retrieve device properties via WMI, filtered by this registration's validators
+                    // Note: On device removal, WMI might not be able to retrieve properties as the device is being removed
+                    // This is a known limitation - property validation is more reliable on connect than disconnect
+                    string cacheKey = string.Join("|", registration.PropertyValidators.Select(v => v.ToString()).ToArray());
+
+                    Dictionary<string, string> deviceProperties;
+                    if (!propertiesCache.TryGetValue(cacheKey, out deviceProperties))
                     {
                         System.Diagnostics.Debug.WriteLine(string.Format("Retrieving device properties via WMI for VID:{0} PID:{1} with {2} validator(s)", e.VendorId, e.ProductId, registration.PropertyValidators.Length));
                         deviceProperties = DevicePropertyRetriever.GetDeviceProperties(e.DevicePath, registration.PropertyValidators);
+                        propertiesCache[cacheKey] = deviceProperties;
                     }
-                    else
+
+                    if (deviceProperties == null)
                     {
-                        deviceProperties = DevicePropertyRetriever.GetDeviceProperties(e.DevicePath);
+                        System.Diagnostics.Debug.WriteLine(string.Format("No matching device found for VID:{0} PID:{1} with specified validators (this is common on disconnect)", e.VendorId, e.ProductId));
+                        continue;
                     }
-                    propertiesCache[cacheKey] = deviceProperties;
-                }
 
-                if (hasValidators && deviceProperties == null)
-                {
-                    System.Diagnostics.Debug.WriteLine(string.Format("No matching device found for VID:{0} PID:{1} with specified validators (this is common on disconnect)", e.VendorId, e.ProductId));
-                    continue;
-                }
-
-                System.Diagnostics.Debug.WriteLine(string.Format("Match found for VID:{0} PID:{1}", e.VendorId, e.ProductId));
-
-                if (deviceProperties != null)
-                {
                     e.Properties = deviceProperties;
                 }
 
-                // Invoke the callback if it's registered
+                // VID/PID matched (and validators passed if any were specified)
+                System.Diagnostics.Debug.WriteLine(string.Format("Match found for VID:{0} PID:{1}", e.VendorId, e.ProductId));
+
                 if (registration.OnDisconnect != null)
                 {
                     try
