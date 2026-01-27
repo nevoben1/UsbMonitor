@@ -46,6 +46,9 @@ namespace UsbMonitorLib
                 return null;
             }
 
+            // Extract device instance ID for exact matching when multiple devices share the same VID/PID
+            string deviceInstanceId = ExtractDeviceInstanceId(devicePath);
+
             // Run WMI query on a separate MTA thread to avoid COM threading issues
             // WMI requires proper COM apartment threading and can fail when called from STA threads
             // Using ManualResetEvent for proper synchronization and memory barriers
@@ -57,7 +60,7 @@ namespace UsbMonitorLib
             {
                 try
                 {
-                    result = GetDevicePropertiesInternal(vendorId, productId);
+                    result = GetDevicePropertiesInternal(vendorId, productId, deviceInstanceId);
                 }
                 catch (Exception ex)
                 {
@@ -73,7 +76,7 @@ namespace UsbMonitorLib
             // Set apartment state to MTA (Multi-Threaded Apartment) for COM interop
             thread.SetApartmentState(ApartmentState.MTA);
 
-            System.Diagnostics.Debug.WriteLine(string.Format("Starting WMI query thread for VID:{0} PID:{1}", vendorId, productId));
+            System.Diagnostics.Debug.WriteLine(string.Format("Starting WMI query thread for VID:{0} PID:{1} InstanceId:{2}", vendorId, productId, deviceInstanceId ?? "(none)"));
             var startTime = System.Diagnostics.Stopwatch.StartNew();
             thread.Start();
 
@@ -138,10 +141,51 @@ namespace UsbMonitorLib
         }
 
         /// <summary>
+        /// Extracts the device instance ID from a Windows device path and converts it to WMI DeviceID format
+        ///
+        /// Windows device paths look like: \\?\USB#VID_046D&amp;PID_C52B#5&amp;2f5e3b1c&amp;0&amp;2#{a5dcbf10-6530-11d2-901f-00c04fb951ed}
+        /// WMI DeviceID looks like:        USB\VID_046D&amp;PID_C52B\5&amp;2f5e3b1c&amp;0&amp;2
+        ///
+        /// The conversion removes the \\?\ prefix, strips the trailing GUID #{...}, and replaces # with \
+        /// </summary>
+        /// <param name="devicePath">The full Windows device path</param>
+        /// <returns>The device instance ID in WMI DeviceID format, or empty string if extraction fails</returns>
+        private static string ExtractDeviceInstanceId(string devicePath)
+        {
+            try
+            {
+                string path = devicePath;
+
+                // Remove the \\?\ prefix if present
+                if (path.StartsWith(@"\\?\", StringComparison.OrdinalIgnoreCase))
+                {
+                    path = path.Substring(4);
+                }
+
+                // Remove the trailing GUID (e.g., #{a5dcbf10-6530-11d2-901f-00c04fb951ed})
+                // The GUID is always at the end, preceded by #{ and ending with }
+                int guidStart = path.LastIndexOf("#{", StringComparison.Ordinal);
+                if (guidStart >= 0)
+                {
+                    path = path.Substring(0, guidStart);
+                }
+
+                // Replace # separators with \ to match WMI DeviceID format
+                path = path.Replace('#', '\\');
+
+                return path;
+            }
+            catch
+            {
+                return string.Empty;
+            }
+        }
+
+        /// <summary>
         /// Internal method that performs the actual WMI query
         /// Must be called from an MTA thread
         /// </summary>
-        private static Dictionary<string, string> GetDevicePropertiesInternal(string vendorId, string productId)
+        private static Dictionary<string, string> GetDevicePropertiesInternal(string vendorId, string productId, string deviceInstanceId)
         {
             try
             {
@@ -163,10 +207,34 @@ namespace UsbMonitorLib
                         return null;
                     }
 
-                    // Get the first matching device
-                    // Note: There might be multiple matches if the same device model is connected multiple times
-                    // For now, we take the first one. Future enhancement: match by device instance path
-                    var device = results.Cast<ManagementObject>().FirstOrDefault();
+                    // Match by device instance path for accurate identification when multiple
+                    // devices with the same VID/PID are connected
+                    ManagementObject device = null;
+
+                    if (!string.IsNullOrEmpty(deviceInstanceId))
+                    {
+                        foreach (ManagementObject obj in results)
+                        {
+                            var deviceId = obj["DeviceID"];
+                            if (deviceId != null && string.Equals(deviceId.ToString(), deviceInstanceId, StringComparison.OrdinalIgnoreCase))
+                            {
+                                device = obj;
+                                System.Diagnostics.Debug.WriteLine(string.Format("Matched device by instance path: {0}", deviceInstanceId));
+                                break;
+                            }
+                        }
+
+                        if (device == null)
+                        {
+                            System.Diagnostics.Debug.WriteLine(string.Format("No exact instance match for '{0}', falling back to first result", deviceInstanceId));
+                        }
+                    }
+
+                    // Fall back to first match if instance path matching was not possible or found no match
+                    if (device == null)
+                    {
+                        device = results.Cast<ManagementObject>().FirstOrDefault();
+                    }
 
                     if (device == null)
                     {
