@@ -27,8 +27,9 @@ namespace UsbMonitorLib
         /// when called from STA threads (like the Windows message loop).
         /// </summary>
         /// <param name="devicePath">The full Windows device path (e.g., "\\?\USB#VID_046D&PID_C52B#...")</param>
+        /// <param name="propertyValidators">Optional validators used to select the correct WMI result when multiple devices share the same VID/PID</param>
         /// <returns>Dictionary of property name to property value, or null if device not found or error occurs</returns>
-        public static Dictionary<string, string> GetDeviceProperties(string devicePath)
+        public static Dictionary<string, string> GetDeviceProperties(string devicePath, PropertyValidator[] propertyValidators = null)
         {
             if (string.IsNullOrWhiteSpace(devicePath))
             {
@@ -57,7 +58,7 @@ namespace UsbMonitorLib
             {
                 try
                 {
-                    result = GetDevicePropertiesInternal(vendorId, productId);
+                    result = GetDevicePropertiesInternal(vendorId, productId, propertyValidators);
                 }
                 catch (Exception ex)
                 {
@@ -141,7 +142,7 @@ namespace UsbMonitorLib
         /// Internal method that performs the actual WMI query
         /// Must be called from an MTA thread
         /// </summary>
-        private static Dictionary<string, string> GetDevicePropertiesInternal(string vendorId, string productId)
+        private static Dictionary<string, string> GetDevicePropertiesInternal(string vendorId, string productId, PropertyValidator[] propertyValidators)
         {
             try
             {
@@ -163,57 +164,63 @@ namespace UsbMonitorLib
                         return null;
                     }
 
-                    // Get the first matching device
-                    // Note: There might be multiple matches if the same device model is connected multiple times
-                    // For now, we take the first one. Future enhancement: match by device instance path
-                    var device = results.Cast<ManagementObject>().FirstOrDefault();
+                    System.Diagnostics.Debug.WriteLine(string.Format("Found {0} WMI result(s) for VID:{1} PID:{2}", results.Count, vendorId, productId));
 
-                    if (device == null)
+                    // Iterate all matching WMI results and return the one that matches all property validators.
+                    // A single VID/PID can produce multiple PnP entities (e.g. composite USB devices),
+                    // each with different property values. We need to find the right one.
+                    foreach (var device in results.Cast<ManagementObject>())
                     {
-                        System.Diagnostics.Debug.WriteLine("No device object returned from WMI query");
-                        return null;
+                        // Extract properties into a dictionary with friendly names
+                        var properties = ExtractProperties(device);
+
+                        System.Diagnostics.Debug.WriteLine(string.Format("Evaluating WMI result: DeviceID={0}", properties.ContainsKey("DeviceID") ? properties["DeviceID"] : "(unknown)"));
+
+                        // Log all retrieved properties for debugging
+                        foreach (var prop in properties)
+                        {
+                            System.Diagnostics.Debug.WriteLine(string.Format("  {0} = {1}", prop.Key, prop.Value));
+                        }
+
+                        // If no validators are provided, return the first result (backwards compatible)
+                        if (propertyValidators == null || propertyValidators.Length == 0)
+                        {
+                            System.Diagnostics.Debug.WriteLine(string.Format("No property validators specified, returning first result for VID:{0} PID:{1}", vendorId, productId));
+                            return properties;
+                        }
+
+                        // Check if ALL validators pass for this device
+                        bool allValidatorsPass = true;
+                        foreach (var validator in propertyValidators)
+                        {
+                            string actualValue;
+                            if (!properties.TryGetValue(validator.PropertyName, out actualValue))
+                            {
+                                System.Diagnostics.Debug.WriteLine(string.Format("  Property '{0}' not found, skipping this result", validator.PropertyName));
+                                allValidatorsPass = false;
+                                break;
+                            }
+
+                            if (!validator.Validate(actualValue))
+                            {
+                                System.Diagnostics.Debug.WriteLine(string.Format("  Validator failed: {0} (actual: '{1}'), skipping this result", validator, actualValue));
+                                allValidatorsPass = false;
+                                break;
+                            }
+
+                            System.Diagnostics.Debug.WriteLine(string.Format("  Validator passed: {0} (actual: '{1}')", validator, actualValue));
+                        }
+
+                        if (allValidatorsPass)
+                        {
+                            System.Diagnostics.Debug.WriteLine(string.Format("All {0} validator(s) passed for this WMI result", propertyValidators.Length));
+                            return properties;
+                        }
                     }
 
-                    // Extract properties into a dictionary with friendly names
-                    var properties = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-
-                    // Map WMI property names to friendly names
-                    // The key is the friendly name (what users will use in PropertyValidator)
-                    // The value is retrieved from the WMI property
-                    AddProperty(properties, device, "Name", "Name");
-                    AddProperty(properties, device, "FriendlyName", "Name"); // Alias for Name
-                    AddProperty(properties, device, "Description", "Description");
-                    AddProperty(properties, device, "Manufacturer", "Manufacturer");
-                    AddProperty(properties, device, "DeviceID", "DeviceID");
-                    AddProperty(properties, device, "PNPDeviceID", "PNPDeviceID");
-                    AddProperty(properties, device, "Status", "Status");
-                    AddProperty(properties, device, "Service", "Service");
-                    AddProperty(properties, device, "Caption", "Caption");
-                    AddProperty(properties, device, "ClassGuid", "ClassGuid");
-                    AddProperty(properties, device, "ConfigManagerErrorCode", "ConfigManagerErrorCode");
-                    AddProperty(properties, device, "ConfigManagerUserConfig", "ConfigManagerUserConfig");
-                    AddProperty(properties, device, "CreationClassName", "CreationClassName");
-                    AddProperty(properties, device, "ErrorCleared", "ErrorCleared");
-                    AddProperty(properties, device, "ErrorDescription", "ErrorDescription");
-                    AddProperty(properties, device, "HardwareID", "HardwareID");
-                    AddProperty(properties, device, "InstallDate", "InstallDate");
-                    AddProperty(properties, device, "LastErrorCode", "LastErrorCode");
-                    AddProperty(properties, device, "PNPClass", "PNPClass");
-                    AddProperty(properties, device, "PowerManagementCapabilities", "PowerManagementCapabilities");
-                    AddProperty(properties, device, "PowerManagementSupported", "PowerManagementSupported");
-                    AddProperty(properties, device, "StatusInfo", "StatusInfo");
-                    AddProperty(properties, device, "SystemCreationClassName", "SystemCreationClassName");
-                    AddProperty(properties, device, "SystemName", "SystemName");
-
-                    System.Diagnostics.Debug.WriteLine(string.Format("Retrieved {0} properties for VID:{1} PID:{2}", properties.Count, vendorId, productId));
-
-                    // Log all retrieved properties for debugging
-                    foreach (var prop in properties)
-                    {
-                        System.Diagnostics.Debug.WriteLine(string.Format("  {0} = {1}", prop.Key, prop.Value));
-                    }
-
-                    return properties;
+                    // No WMI result matched all validators
+                    System.Diagnostics.Debug.WriteLine(string.Format("No WMI result matched all property validators for VID:{0} PID:{1}", vendorId, productId));
+                    return null;
                 }
             }
             catch (ManagementException ex)
@@ -234,6 +241,44 @@ namespace UsbMonitorLib
                 System.Diagnostics.Debug.WriteLine(string.Format("Error retrieving device properties for VID:{0} PID:{1}: {2}", vendorId, productId, ex.Message));
                 return null;
             }
+        }
+
+        /// <summary>
+        /// Extracts all known properties from a WMI ManagementObject into a dictionary
+        /// </summary>
+        private static Dictionary<string, string> ExtractProperties(ManagementObject device)
+        {
+            var properties = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+
+            // Map WMI property names to friendly names
+            // The key is the friendly name (what users will use in PropertyValidator)
+            // The value is retrieved from the WMI property
+            AddProperty(properties, device, "Name", "Name");
+            AddProperty(properties, device, "FriendlyName", "Name"); // Alias for Name
+            AddProperty(properties, device, "Description", "Description");
+            AddProperty(properties, device, "Manufacturer", "Manufacturer");
+            AddProperty(properties, device, "DeviceID", "DeviceID");
+            AddProperty(properties, device, "PNPDeviceID", "PNPDeviceID");
+            AddProperty(properties, device, "Status", "Status");
+            AddProperty(properties, device, "Service", "Service");
+            AddProperty(properties, device, "Caption", "Caption");
+            AddProperty(properties, device, "ClassGuid", "ClassGuid");
+            AddProperty(properties, device, "ConfigManagerErrorCode", "ConfigManagerErrorCode");
+            AddProperty(properties, device, "ConfigManagerUserConfig", "ConfigManagerUserConfig");
+            AddProperty(properties, device, "CreationClassName", "CreationClassName");
+            AddProperty(properties, device, "ErrorCleared", "ErrorCleared");
+            AddProperty(properties, device, "ErrorDescription", "ErrorDescription");
+            AddProperty(properties, device, "HardwareID", "HardwareID");
+            AddProperty(properties, device, "InstallDate", "InstallDate");
+            AddProperty(properties, device, "LastErrorCode", "LastErrorCode");
+            AddProperty(properties, device, "PNPClass", "PNPClass");
+            AddProperty(properties, device, "PowerManagementCapabilities", "PowerManagementCapabilities");
+            AddProperty(properties, device, "PowerManagementSupported", "PowerManagementSupported");
+            AddProperty(properties, device, "StatusInfo", "StatusInfo");
+            AddProperty(properties, device, "SystemCreationClassName", "SystemCreationClassName");
+            AddProperty(properties, device, "SystemName", "SystemName");
+
+            return properties;
         }
 
         /// <summary>
