@@ -438,10 +438,6 @@ namespace UsbMonitorLib
                 currentRegistrations = new List<UsbDeviceRegistration>(registrations);
             }
 
-            // Cache for property lookups to avoid redundant WMI queries.
-            // Key: validator descriptions joined by pipe. Only populated when validators are present.
-            var propertiesCache = new Dictionary<string, Dictionary<string, string>>();
-
             // Check each registration to see if it matches this device
             foreach (var registration in currentRegistrations)
             {
@@ -456,15 +452,8 @@ namespace UsbMonitorLib
                 if (hasValidators)
                 {
                     // Retrieve device properties via WMI, filtered by this registration's validators
-                    string cacheKey = string.Join("|", registration.PropertyValidators.Select(v => v.ToString()).ToArray());
-
-                    Dictionary<string, string> deviceProperties;
-                    if (!propertiesCache.TryGetValue(cacheKey, out deviceProperties))
-                    {
-                        System.Diagnostics.Debug.WriteLine(string.Format("Retrieving device properties via WMI for VID:{0} PID:{1} with {2} validator(s)", e.VendorId, e.ProductId, registration.PropertyValidators.Length));
-                        deviceProperties = DevicePropertyRetriever.GetDeviceProperties(e.DevicePath, registration.PropertyValidators);
-                        propertiesCache[cacheKey] = deviceProperties;
-                    }
+                    System.Diagnostics.Debug.WriteLine(string.Format("Retrieving device properties via WMI for VID:{0} PID:{1} with {2} validator(s)", e.VendorId, e.ProductId, registration.PropertyValidators.Length));
+                    var deviceProperties = DevicePropertyRetriever.GetDeviceProperties(e.DevicePath, registration.PropertyValidators);
 
                     if (deviceProperties == null)
                     {
@@ -506,9 +495,6 @@ namespace UsbMonitorLib
                 currentRegistrations = new List<UsbDeviceRegistration>(registrations);
             }
 
-            // Cache for property lookups to avoid redundant WMI queries.
-            var propertiesCache = new Dictionary<string, Dictionary<string, string>>();
-
             // Check each registration to see if it matches this device
             foreach (var registration in currentRegistrations)
             {
@@ -525,15 +511,8 @@ namespace UsbMonitorLib
                     // Retrieve device properties via WMI, filtered by this registration's validators
                     // Note: On device removal, WMI might not be able to retrieve properties as the device is being removed
                     // This is a known limitation - property validation is more reliable on connect than disconnect
-                    string cacheKey = string.Join("|", registration.PropertyValidators.Select(v => v.ToString()).ToArray());
-
-                    Dictionary<string, string> deviceProperties;
-                    if (!propertiesCache.TryGetValue(cacheKey, out deviceProperties))
-                    {
-                        System.Diagnostics.Debug.WriteLine(string.Format("Retrieving device properties via WMI for VID:{0} PID:{1} with {2} validator(s)", e.VendorId, e.ProductId, registration.PropertyValidators.Length));
-                        deviceProperties = DevicePropertyRetriever.GetDeviceProperties(e.DevicePath, registration.PropertyValidators);
-                        propertiesCache[cacheKey] = deviceProperties;
-                    }
+                    System.Diagnostics.Debug.WriteLine(string.Format("Retrieving device properties via WMI for VID:{0} PID:{1} with {2} validator(s)", e.VendorId, e.ProductId, registration.PropertyValidators.Length));
+                    var deviceProperties = DevicePropertyRetriever.GetDeviceProperties(e.DevicePath, registration.PropertyValidators);
 
                     if (deviceProperties == null)
                     {
